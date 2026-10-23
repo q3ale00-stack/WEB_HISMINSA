@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HIS MINSA Analytics — Hospital Regional de Ayacucho</title>
+<link rel="icon" type="image/png" href="/img/favicon.png">
+<meta name="description" content="Plataforma analítica HIS MINSA para consultas, filtros, indicadores, producción y análisis del sistema de información en salud.">
+<!-- Recursos tipográficos y hoja de estilos global de la interfaz. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css?v=20261022-prod-1">
+<link rel="stylesheet" href="/css/tema-oscuro.css?v=20261022-prod-1">
+<script>
+  // Aplica el aspecto elegido (claro, oscuro o automático) antes de dibujar la página.
+  (function () {
+    var tema = 'auto';
+    try { tema = localStorage.getItem('his_tema') || 'auto'; } catch (e) { /* sin almacenamiento */ }
+    var oscuro = tema === 'oscuro' || (tema === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', oscuro ? 'dark' : 'light');
+  })();
+</script>
+</head>
+<body>
+<section class="login-page" aria-labelledby="loginTitle">
+  <div class="login-brand-panel">
+    <div class="login-brand-content">
+      <div class="login-logo-card"><img src="/img/logo-hospital.png" alt="Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»" width="900" height="295"></div>
+      <p class="login-overline">Hospital Miguel A. Mariscal Llerena</p>
+      <h1>HIS <span>MINSA</span></h1>
+      <p class="login-brand-description">Plataforma de información y análisis para fortalecer la atención en salud.</p>
+      <div class="login-access-note">
+        <span class="login-access-icon" aria-hidden="true">✓</span>
+        Acceso previsto para administradores y médicos
+      </div>
+    </div>
+    <div class="login-brand-footer">Sistema de información hospitalaria · 2026</div>
+  </div>
+  <div class="login-form-panel">
+    <form class="login-card" id="loginForm">
+      <div class="login-card-heading">
+        <p class="login-eyebrow">Bienvenido</p>
+        <h2 id="loginTitle">Iniciar sesión</h2>
+        <p>Ingresa tus credenciales para continuar al sistema.</p>
+      </div>
+      <div class="login-field">
+        <label for="loginUsername">Usuario</label>
+        <input class="input" id="loginUsername" name="username" type="text" placeholder="Ingresa tu usuario" autocomplete="username" required>
+      </div>
+      <div class="login-field">
+        <label for="loginPassword">Contraseña</label>
+        <input class="input" id="loginPassword" name="password" type="password" placeholder="Ingresa tu contraseña" autocomplete="current-password" required>
+      </div>
+      <label class="login-remember" for="rememberUser">
+        <input id="rememberUser" name="rememberUser" type="checkbox">
+        <span>Recordarme</span>
+      </label>
+      <p class="login-remember-hint">Se recordará el usuario en este navegador; la contraseña no se guarda.</p>
+      <button class="btn btn-primary login-submit" type="submit">Ingresar</button>
+      <p class="login-status" id="loginStatus" role="status" aria-live="polite" hidden></p>
+      <p class="login-disclaimer">El acceso es para cuentas creadas por el administrador del sistema.</p>
+    </form>
+  </div>
+</section>
+
+<div class="app" hidden>
+
+<!-- Navegación persistente: identidad institucional, accesos a vistas y versión de la aplicación. -->
+<!-- Encabezado: identidad institucional, estado de la conexión y menú del usuario. -->
+<header class="appbar">
+  <div class="appbar-top">
+    <button class="appbar-menu" id="appMenuToggle" type="button" aria-label="Abrir el menú" aria-expanded="false" aria-controls="sidebar" onclick="toggleSidebar()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <button class="appbar-brand" type="button" onclick="showView('inicio')" aria-label="Ir al inicio">
+      <span class="appbar-logo"><img src="/img/logo-hospital.png" alt="Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»" width="900" height="295"></span>
+      <span class="appbar-brand-text"><strong>HIS <span>MINSA</span></strong><small>Hospital Regional de Ayacucho</small></span>
+    </button>
+    <div class="appbar-right">
+      <span class="topbar-badge disconnected" id="apiState">API desconectada</span>
+      <div class="user-menu" id="userMenu">
+        <button class="user-menu-btn" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userMenuPanel">
+          <span class="user-avatar" id="userAvatar" aria-hidden="true">?</span>
+          <span class="user-menu-name"><strong id="usuarioActual">—</strong><small id="usuarioRol">Usuario</small></span>
+          <svg class="user-menu-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="user-menu-panel" id="userMenuPanel" hidden>
+          <div class="user-menu-head"><strong id="usuarioMenuNombre">—</strong><small id="usuarioMenuRol">Usuario</small></div>
+          <div class="user-menu-aspecto">
+            <span class="user-menu-label">Aspecto</span>
+            <div class="tema-switch" role="radiogroup" aria-label="Aspecto de la página">
+              <button type="button" role="radio" data-tema="claro" aria-checked="false" title="Claro"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Claro</span></button>
+              <button type="button" role="radio" data-tema="oscuro" aria-checked="false" title="Oscuro"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg><span>Oscuro</span></button>
+              <button type="button" role="radio" data-tema="auto" aria-checked="false" title="Automático: igual que el equipo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Auto</span></button>
+            </div>
+          </div>
+        <button class="nav-btn" data-view="perfil">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
+          Mi perfil
+        </button>
+        <button class="nav-btn" data-view="importar" id="navImportar" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v11m0-11l-4 4m4-4l4 4"/></svg>
+          Importar datos
+        </button>
+        <button class="nav-btn" data-view="config">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z"/><circle cx="12" cy="12" r="3"/></svg>
+          Configuración
+        </button>
+          <button class="user-menu-logout" id="menuLogout" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3"/></svg>
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Menú principal en una sola fila; en pantallas pequeñas se despliega con el botón ☰. -->
+  <nav class="appnav" id="sidebar" aria-label="Navegación principal">
+    <div class="appnav-inner">
+      <div class="appnav-group" role="group" aria-label="Plataforma">
+        <span class="nav-section">Plataforma</span>
+        <button class="nav-btn active" data-view="inicio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+          Inicio
+        </button>
+        <button class="nav-btn" data-view="consultas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="7" cy="7" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="17" cy="17" r="1.5"/></svg>
+          Consultas
+        </button>
+        <button class="nav-btn" data-view="reportes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Producción
+        </button>
+      </div>
+      <span class="appnav-sep" aria-hidden="true"></span>
+      <div class="appnav-group" role="group" aria-label="Búsquedas">
+        <span class="nav-section">Búsquedas</span>
+        <button class="nav-btn" data-view="pacientes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+          Pacientes
+        </button>
+        <button class="nav-btn" data-view="atenciones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg>
+          Atenciones
+        </button>
+        <button class="nav-btn" data-view="defunciones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 13.5h5"/></svg>
+          Defunciones
+        </button>
+        <button class="nav-btn" data-view="personal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          Personal
+        </button>
+        <button class="nav-btn" data-view="catalogos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+          Catálogos
+        </button>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<!-- Área principal de la aplicación -->
+<main class="main">
+<!-- Título y descripción de la vista actual. -->
+<div class="page-head">
+  <h2 id="pageTitle">Inicio</h2><p id="pageSubtitle">Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»</p>
+</div>
+<div class="content">
+<!-- Avisos globales reutilizados para errores, validaciones y resultados. -->
+<div id="globalAlert" class="alert"></div>
+
+<!-- Vista: inicio. Primera pantalla después de iniciar sesión: foto de fondo, buscador de pacientes, módulos principales, cifras y producción mensual. -->
+<section id="view-inicio" class="view active">
+  <!-- Portada: degradado institucional con luces suaves, trama de puntos y línea de pulso; a la derecha, cifras reales. -->
+  <div class="home-hero hh">
+    <div class="hh-bg" aria-hidden="true">
+      <span class="hh-blob hh-b1"></span><span class="hh-blob hh-b2"></span><span class="hh-blob hh-b3"></span>
+      <svg class="hh-pulse" viewBox="0 0 1200 160" preserveAspectRatio="none"><path d="M0 100 H330 L360 100 L380 60 L400 130 L425 20 L450 145 L470 100 H690 L710 100 L725 78 L740 112 L755 100 H1200"/></svg>
+    </div>
+    <div class="home-hero-text">
+      <p class="home-greeting" id="homeGreeting">Bienvenido</p>
+      <h3>Producción asistencial del Hospital Regional de Ayacucho</h3>
+      <p class="home-freshness"><span class="home-dot" aria-hidden="true"></span><span id="homeFreshness">Consultando la última actualización de los datos…</span></p>
+      <form class="home-search" id="homeSearchForm" role="search">
+        <label class="home-search-label" for="homeSearchInput">Buscar un paciente</label>
+        <div class="home-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="homeSearchInput" type="search" placeholder="DNI, nombre, apellido o historia clínica" autocomplete="off">
+          <button class="btn btn-primary" type="submit">Buscar</button>
+        </div>
+      </form>
+    </div>
+    <div class="hh-side" aria-label="Cifras generales">
+      <div class="hh-glass hh-main">
+        <span class="hh-label" id="homeMesLabel">Citas atendidas en el último mes</span>
+        <strong class="hh-value" id="homeMes">—</strong>
+        <span class="hh-trend" id="homeMesTrend"></span>
+        <svg class="hh-spark" id="homeSpark" viewBox="0 0 220 56" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <span class="hh-foot">Última atención registrada: <b id="homeUltima">—</b></span>
+      </div>
+      <div class="hh-mini-row">
+        <div class="hh-glass hh-mini">
+          <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg></span>
+          <strong id="homePacientes">—</strong><span>pacientes en el padrón</span>
+        </div>
+        <div class="hh-glass hh-mini">
+          <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
+          <strong id="homeAtenciones">—</strong><span>citas atendidas registradas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-grid">
+    <section class="card home-chart-card" aria-labelledby="homeChartTitle">
+      <div class="card-header">
+        <div><div class="card-title" id="homeChartTitle">Citas atendidas por mes</div><div class="card-subtitle" id="homeChartNote">Últimos meses con registros en NProduccion</div></div>
+      </div>
+      <div class="home-chart" id="homeChart"><div class="table-empty">Cargando…</div></div>
+    </section>
+    <div class="home-links">
+      <button class="home-link" type="button" data-go="atenciones">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
+        <span><span class="home-link-title">Atenciones</span><span class="home-link-text">Por cita, paciente, personal, código o fechas</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="defunciones">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 13.5h5"/></svg></span>
+        <span><span class="home-link-title">Defunciones</span><span class="home-link-text">Registros del SINADEF de Ayacucho</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="catalogos">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg></span>
+        <span><span class="home-link-title">Catálogos</span><span class="home-link-text">CIE-10, CPMS, UPS, laboratorio y más</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="importar" id="homeImportar" hidden>
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v11m0-11l-4 4m4-4l4 4"/></svg></span>
+        <span><span class="home-link-title">Importar datos</span><span class="home-link-text">Actualiza la base con los CSV del HIS</span></span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- Vista: búsqueda de pacientes (MaestroPaciente) con su ficha y atenciones. -->
+<section id="view-pacientes" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar pacientes">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-pac-tab="simple" onclick="cambiarTabPacientes('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar paciente
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-pac-tab="filtros" id="pacTabAvanzada" onclick="cambiarTabPacientes('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="pacPanelSimple" class="pac-panel" role="tabpanel"></div>
+  <div id="pacPanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="nominalApp" class="nominal-app"></div>
+  </div>
+</section>
+
+<!-- Vista: búsqueda de atenciones (NProduccion) por cita, paciente, personal, código y fechas. -->
+<section id="view-atenciones" class="view">
+  <div class="card search-card">
+    <form class="search-bar search-bar-mode" id="formAtenciones" role="search">
+      <input class="input" id="qAtenciones" type="search" placeholder="Cita, ID de paciente, ID de personal o código HIS" autocomplete="off" aria-label="Buscar atención">
+      <select class="input" id="modoAtenciones" aria-label="Buscar en">
+        <option value="todos">Todos los datos</option>
+        <option value="cita">Código de cita</option>
+        <option value="paciente">ID de paciente</option>
+        <option value="personal">ID de personal</option>
+        <option value="codigo">Código CIE / CPMS</option>
+      </select>
+      <div class="search-buttons">
+        <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
+        <button class="btn btn-secondary" type="reset">Limpiar</button>
+      </div>
+      <div class="search-dates">
+        <label class="label" for="desdeAtenciones">Desde<input class="input" id="desdeAtenciones" type="date"></label>
+        <label class="label" for="hastaAtenciones">Hasta<input class="input" id="hastaAtenciones" type="date"></label>
+      </div>
+    </form>
+    <p class="search-hint">Escribe un dato, elige un rango de fechas o ambos. Se muestran las 200 atenciones más recientes.</p>
+  </div>
+  <div id="resAtenciones" aria-live="polite"></div>
+</section>
+
+<!-- Vista: búsqueda de defunciones (V_SINADEF_AYACUCHO_DOMFALLECIDO). -->
+<section id="view-defunciones" class="view">
+  <div class="def-hero">
+    <div class="def-hero-text">
+      <h3>Buscar en el SINADEF de Ayacucho</h3>
+      <p>Escribe un <strong>DNI</strong>, <strong>certificado</strong> o <strong>nombre</strong>, o consulta las defunciones de un periodo.</p>
+    </div>
+    <form class="def-search" id="formDefunciones" role="search" autocomplete="off">
+      <div class="def-search-box">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="qDefunciones" type="search" placeholder="Ej.: 28228899 · Cisneros Tineo · 2001317721" aria-label="Buscar defunción">
+        <select class="input" id="modoDefunciones" aria-label="Buscar en">
+          <option value="todos">Todos los datos</option>
+          <option value="documento">Documento</option>
+          <option value="n">N</option>
+          <option value="cdef">Certificado</option>
+          <option value="nombre">Nombre</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Buscar</button>
+      </div>
+      <div class="def-search-extra">
+        <div class="def-periodos" role="group" aria-label="Periodos rápidos">
+          <span>Ver defunciones de:</span>
+          <button type="button" class="def-periodo" data-def-periodo="7">Últimos 7 días</button>
+          <button type="button" class="def-periodo" data-def-periodo="30">Último mes</button>
+          <button type="button" class="def-periodo" data-def-periodo="90">Últimos 3 meses</button>
+        </div>
+        <details class="def-rango" id="defRango">
+          <summary>Rango de fechas</summary>
+          <div class="def-rango-campos">
+            <label class="label" for="desdeDefunciones">Desde<input class="input" id="desdeDefunciones" type="date"></label>
+            <label class="label" for="hastaDefunciones">Hasta<input class="input" id="hastaDefunciones" type="date"></label>
+            <button class="btn btn-secondary btn-sm" type="reset">Limpiar</button>
+          </div>
+        </details>
+      </div>
+    </form>
+  </div>
+  <div id="resDefunciones" aria-live="polite"></div>
+</section>
+
+<!-- Vista: búsqueda de personal (MaestroPersonal) con su ficha y atenciones. -->
+<section id="view-personal" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar personal">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-per-tab="simple" onclick="cambiarTabPersonal('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar personal
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-per-tab="filtros" id="perTabAvanzada" onclick="cambiarTabPersonal('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="perPanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="nominalPersonalApp" class="nominal-app"></div>
+  </div>
+  <div id="perPanelSimple" class="pac-panel" role="tabpanel">
+  <div class="card search-card">
+    <form class="search-bar search-bar-mode" id="formPersonal" role="search">
+      <input class="input" id="qPersonal" type="search" placeholder="ID de personal, DNI, apellido o nombre" autocomplete="off" aria-label="Buscar personal">
+      <select class="input" id="modoPersonal" aria-label="Buscar en">
+        <option value="todo">Todos los datos</option>
+        <option value="id">ID de personal</option>
+        <option value="documento">Documento</option>
+        <option value="nombre">Nombre</option>
+      </select>
+      <div class="search-buttons">
+        <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar personal</button>
+        <button class="btn btn-secondary" type="reset">Limpiar</button>
+      </div>
+    </form>
+    <p class="search-hint">Busca por ID, documento o nombre para ver la ficha del profesional y sus atenciones.</p>
+  </div>
+  <div id="resPersonal" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- Vista: catálogos (tablas maestras) del HIS. -->
+<section id="view-catalogos" class="view">
+  <div id="catalogosLista">
+    <div class="card search-card">
+      <div class="search-bar">
+        <input class="input" id="filtroCatalogos" type="search" placeholder="Filtrar catálogos por nombre o tabla" autocomplete="off" aria-label="Filtrar catálogos">
+        <div class="search-buttons"><button class="btn btn-secondary" type="button" id="limpiarFiltroCatalogos">Limpiar</button></div>
+      </div>
+      <p class="search-hint">Elige un catálogo para ver sus registros y buscar dentro de él.</p>
+    </div>
+    <div class="catalog-grid" id="catalogGrid"><div class="table-empty">Cargando catálogos…</div></div>
+  </div>
+  <div id="catalogoDetalle" hidden>
+    <div class="card catalog-panel">
+      <button type="button" class="btn btn-ghost btn-sm ficha-back" id="volverCatalogos">← Todos los catálogos</button>
+      <div class="catalog-panel-head">
+        <div><div class="ficha-eyebrow" id="catTabla"></div><h3 id="catTitulo"></h3><p class="card-subtitle" id="catDescripcion"></p></div>
+      </div>
+      <form class="search-bar" id="formCatalogo" role="search">
+        <input class="input" id="qCatalogo" type="search" placeholder="Buscar en este catálogo (código, descripción…)" autocomplete="off" aria-label="Buscar en el catálogo">
+        <div class="search-buttons">
+          <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
+          <button class="btn btn-secondary" type="reset">Limpiar</button>
+          <button class="btn btn-secondary btn-export-excel" type="button" data-export="catalogo" data-formato="excel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg> Excel</button>
+          <button class="btn btn-secondary btn-export-pdf" type="button" data-export="catalogo" data-formato="pdf"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg> PDF</button>
+        </div>
+      </form>
+      <div id="catResultado" class="catalog-result" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Vista: analítica y constructor de consultas -->
+<section id="view-consultas" class="view">
+  <!-- Presentación de la vista e indicadores generales del universo HIS. -->
+  <div class="card analytics-hero">
+    <div class="analytics-hero-copy">
+      <div class="eyebrow">Análisis de producción</div>
+      <h3>Consulta de producción HIS</h3>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Pacientes registrados</div>
+      <div class="kpi-value" id="dashboardPacientes">—</div>
+      <div class="kpi-foot">Padrón maestro completo</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Citas atendidas</div>
+      <div class="kpi-value" id="dashboardAtenciones">—</div>
+      <div class="kpi-foot">Citas HIS distintas (Id_Cita)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Establecimientos</div>
+      <div class="kpi-value" id="dashboardEstablecimientos">—</div>
+      <div class="kpi-foot">Con producción registrada</div>
+    </div>
+    <div class="kpi-card accent">
+      <div class="kpi-label">Última atención</div>
+      <div class="kpi-value" id="dashboardUltimaAtencion">—</div>
+      <div class="kpi-foot">Fecha máxima registrada</div>
+    </div>
+  </div>
+
+  <!-- Controles de modo de visualización: Vertical (Resultados abajo), Pestañas o Dividido -->
+  <div class="query-layout-modes-bar">
+    <div class="view-mode-tabs" role="tablist" aria-label="Modo de diseño de consulta">
+      <button class="view-mode-tab active" id="layoutBtnStacked" type="button" onclick="setQueryLayoutMode('stacked')" title="Muestra los resultados abajo con ancho completo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/></svg>
+        <span>Resultados abajo (Ancho completo)</span>
+      </button>
+      <button class="view-mode-tab" id="layoutBtnTabbed" type="button" onclick="setQueryLayoutMode('tabbed')" title="Alterna entre pestaña de filtros y pestaña de resultados">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M4 10h16"/></svg>
+        <span>Modo pestañas</span>
+      </button>
+      <button class="view-mode-tab" id="layoutBtnSplit" type="button" onclick="setQueryLayoutMode('split')" title="Muestra los filtros a la izquierda y los resultados a la derecha">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="18" rx="2"/><rect x="13" y="3" width="8" height="18" rx="2"/></svg>
+        <span>Lado a lado</span>
+      </button>
+    </div>
+
+    <!-- Pestañas activas solo visibles en Modo Pestañas -->
+    <div class="query-subtabs" id="querySubtabs" style="display:none;">
+      <button class="query-subtab active" id="subtabParametros" type="button" onclick="switchQuerySubtab('parametros')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>1. Parámetros y filtros</span>
+      </button>
+      <button class="query-subtab" id="subtabResultados" type="button" onclick="switchQuerySubtab('resultados')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <span>2. Resultados del análisis</span>
+        <span class="badge badge-subtab" id="subtabResultadosBadge">0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Contenedor del layout de consulta: por defecto 'layout-stacked' (abajo de búsqueda) -->
+  <div class="analysis-layout layout-stacked" id="analysisLayout">
+    <!-- Panel de parámetros de consulta -->
+    <div class="query-panel card" id="queryPanel">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Consultas y análisis clínico</div>
+          <div class="card-subtitle">Encuentre rápidamente información de atenciones, diagnósticos, médicos y pacientes</div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-ghost btn-sm btn-collapse-toggle" id="btnToggleQueryCollapse" onclick="toggleQueryCollapse()" title="Ocultar o desplegar parámetros de búsqueda">
+            <span id="collapseToggleIcon" class="collapse-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+            </span>
+            <span id="collapseToggleLabel">Minimizar filtros</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Selector de Modo de Consulta: Asistido (Amigable) vs Avanzado (Técnico) -->
+      <div class="query-mode-selector-wrap">
+        <div class="query-mode-tabs" role="tablist">
+          <button type="button" class="query-mode-tab active" id="tabBtnModoAsistido" onclick="cambiarModoConsulta('asistido')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Consulta Asistida (Fácil e Intuitivo)</span>
+            <span class="mode-badge-rec">Recomendado para el hospital</span>
+          </button>
+          <button type="button" class="query-mode-tab" id="tabBtnModoAvanzado" onclick="cambiarModoConsulta('avanzado')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            <span>Modo Avanzado (Condiciones complejas)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra resumen activa cuando el panel está minimizado -->
+      <div id="queryActiveSummary" class="query-active-summary" style="display:none;">
+        <div class="summary-text-box">
+          <span class="summary-pill-indicator">Filtros configurados:</span>
+          <span id="querySummaryDescription">Medida: Pacientes únicos · Sin filtros adicionales</span>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleQueryCollapse(false)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Modificar filtros
+        </button>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           MODO ASISTIDO: FÁCIL, SIN AND/OR, CLÍNICO E INTUITIVO
+           ═══════════════════════════════════════════════════════════════════ -->
+      <div id="panelModoAsistido" class="asistido-panel">
+        <!-- 1. Tarjetas de Consultas Frecuentes del Hospital (1 Clic) -->
+        <div class="asistido-presets-section">
+          <div class="asistido-presets-header">
+            <div class="asistido-presets-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>Consultas rápidas del hospital (1 clic para ejecutar):</span>
+            </div>
+          </div>
+          <div class="asistido-presets-grid">
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('dx_top')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v6a4 4 0 008 0V3"/><path d="M10 13v2a5 5 0 0010 0v-2"/><circle cx="20" cy="11" r="2"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Top Diagnósticos más frecuentes</strong>
+                <p>Enfermedades con mayor volumen de pacientes atendidos</p>
+              </div>
+            </div>
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('medico_prod')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0116 0"/><path d="M12 15v4M10 17h4"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Producción por Médico / Personal</strong>
+                <p>Total de atenciones y consultas por cada profesional</p>
+              </div>
+            </div>
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('ups_prod')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M12 8v6M9 11h6M9 21v-3h6v3"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Atenciones por Servicio (UPS)</strong>
+                <p>Volumen en Psicología, Medicina, Emergencia, Odontología</p>
+              </div>
+            </div>
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('estab_prod')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M9 21v-5h6v5"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Por Establecimiento</strong>
+                <p>Hospital Regional vs Puestos y Centros de Salud periféricos</p>
+              </div>
+            </div>
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('mensual_prod')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Evolución Mes a Mes</strong>
+                <p>Tendencia cronológica de atenciones a lo largo del año</p>
+              </div>
+            </div>
+            <div class="asistido-preset-card" onclick="aplicarPlantillaAsistida('salud_mental')">
+              <div class="asistido-preset-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 4A3 3 0 006.5 7a3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 .5V5.5A2 2 0 009.5 4z"/><path d="M14.5 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 .5"/></svg></div>
+              <div class="asistido-preset-body">
+                <strong>Salud Mental (F32 / F41)</strong>
+                <p>Pacientes atendidos por Depresión, Ansiedad y afines</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Formulario Guiado Paso a Paso -->
+        <div class="asistido-steps-container">
+          <!-- Paso 1: ¿Qué deseas medir? -->
+          <div class="asistido-step-box">
+            <div class="asistido-step-head">
+              <span class="asistido-step-badge">Paso 1</span>
+              <h4>¿Qué resultado deseas contar o medir?</h4>
+            </div>
+            <div class="asistido-measure-options">
+              <button type="button" class="asistido-measure-btn active" data-measure="pacientesUnicos" onclick="seleccionarMedidaAsistida('pacientesUnicos')">
+                <span class="asistido-measure-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg></span>
+                <span class="asistido-measure-name">Pacientes únicos</span>
+                <span class="asistido-measure-desc">Número de personas distintas atendidas</span>
+              </button>
+              <button type="button" class="asistido-measure-btn" data-measure="atenciones" onclick="seleccionarMedidaAsistida('atenciones')">
+                <span class="asistido-measure-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
+                <span class="asistido-measure-name">Citas / Atenciones</span>
+                <span class="asistido-measure-desc">Total de consultas médicas realizadas</span>
+              </button>
+              <button type="button" class="asistido-measure-btn" data-measure="registros" onclick="seleccionarMedidaAsistida('registros')">
+                <span class="asistido-measure-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18M6 20V11M11 20V5M16 20v-6M20 20V9"/></svg></span>
+                <span class="asistido-measure-name">Registros HIS</span>
+                <span class="asistido-measure-desc">Filas totales de ítems y diagnósticos</span>
+              </button>
+              <button type="button" class="asistido-measure-btn" data-measure="codigosUnicos" onclick="seleccionarMedidaAsistida('codigosUnicos')">
+                <span class="asistido-measure-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span>
+                <span class="asistido-measure-name">Códigos distintos</span>
+                <span class="asistido-measure-desc">Cantidad de códigos CIE/CPMS empleados</span>
+              </button>
+            </div>
+            <div class="asistido-more-measures-link">
+              <span onclick="toggleMedidasAvanzadasAsistidas()">¿Necesitas promedios clínicos (Edad, Hemoglobina, LAB, Peso, Talla)? <span id="toggleMasMedidasLabel">Ver más opciones ↓</span></span>
+              <div id="asistidoMedidasAvanzadasWrap" style="display:none; margin-top:8px;">
+                <select class="select-native input-sm" id="asistidoMedidaExtraSelect" onchange="seleccionarMedidaExtraAsistida(this.value)" style="max-width:320px;">
+                  <option value="">-- Seleccionar métrica clínica específica --</option>
+                  <option value="avgEdad">Edad promedio de los pacientes</option>
+                  <option value="avgHemoglobina">Hemoglobina promedio</option>
+                  <option value="maxHemoglobina">Hemoglobina máxima</option>
+                  <option value="avgPeso">Peso promedio</option>
+                  <option value="maxPeso">Peso máximo</option>
+                  <option value="avgTalla">Talla promedio</option>
+                  <option value="sumLab">Suma de valores LAB</option>
+                  <option value="avgLab">Promedio de valores LAB</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Paso 2: ¿Cómo deseas agrupar u organizar los datos? -->
+          <div class="asistido-step-box">
+            <div class="asistido-step-head">
+              <span class="asistido-step-badge">Paso 2</span>
+              <h4>¿Cómo deseas organizar la información en la tabla?</h4>
+              <span class="asistido-step-hint">(Puedes marcar uno o varios con solo hacer clic)</span>
+            </div>
+            <div class="asistido-chips-grid">
+              <button type="button" class="asistido-chip active" data-dim="diagnostico" onclick="toggleChipAsistido('diagnostico')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v6a4 4 0 008 0V3"/><path d="M10 13v2a5 5 0 0010 0v-2"/><circle cx="20" cy="11" r="2"/></svg></span>
+                <span class="chip-text">Por Diagnóstico CIE-10</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="profesional" onclick="toggleChipAsistido('profesional')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0116 0"/><path d="M12 15v4M10 17h4"/></svg></span>
+                <span class="chip-text">Por Médico / Profesional</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="ups" onclick="toggleChipAsistido('ups')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M12 8v6M9 11h6M9 21v-3h6v3"/></svg></span>
+                <span class="chip-text">Por Servicio / UPS</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="establecimiento" onclick="toggleChipAsistido('establecimiento')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M9 21v-5h6v5"/></svg></span>
+                <span class="chip-text">Por Establecimiento</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="mes" onclick="toggleChipAsistido('mes')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+                <span class="chip-text">Por Mes</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="nombrePaciente" onclick="toggleChipAsistido('nombrePaciente')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg></span>
+                <span class="chip-text">Detalle por Paciente (Nombre)</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="documento" onclick="toggleChipAsistido('documento')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 16.5a3.5 3.5 0 017 0M15 10h3M15 14h3"/></svg></span>
+                <span class="chip-text">Por DNI / Documento</span>
+              </button>
+              <button type="button" class="asistido-chip" data-dim="tipoDiagnostico" onclick="toggleChipAsistido('tipoDiagnostico')">
+                <span class="chip-check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4z"/></svg></span>
+                <span class="chip-text">Por Tipo (Definitivo, Presuntivo, Repetido)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Paso 3: Filtros sencillos opcionales -->
+          <div class="asistido-step-box">
+            <div class="asistido-step-head">
+              <span class="asistido-step-badge">Paso 3</span>
+              <h4>Filtros sencillos</h4>
+              <span class="asistido-step-hint">(Opcionales: rellena solo lo que quieras acotar)</span>
+            </div>
+            
+            <div class="asistido-filters-grid">
+              <!-- Filtro de Periodo -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <span>Periodo de atención</span>
+                </label>
+                <select class="select-native" id="asistidoPeriodoSelect" onchange="cambiarPeriodoAsistido(this.value)">
+                  <option value="2026" selected>Año 2026 completo</option>
+                  <option value="mes_actual">Mes actual</option>
+                  <option value="ultimos_30">Últimos 30 días</option>
+                  <option value="todo">Todo el historial registrado</option>
+                  <option value="custom">Rango de fechas personalizado...</option>
+                </select>
+                <div class="asistido-custom-dates" id="asistidoCustomDatesWrap" style="display:none; margin-top:8px;">
+                  <div style="display:flex; gap:8px;">
+                    <div style="flex:1;">
+                      <span class="text-xs text-muted">Desde:</span>
+                      <input type="date" class="input input-sm" id="asistidoFechaDesde" onchange="actualizarResumenHumano()">
+                    </div>
+                    <div style="flex:1;">
+                      <span class="text-xs text-muted">Hasta:</span>
+                      <input type="date" class="input input-sm" id="asistidoFechaHasta" onchange="actualizarResumenHumano()">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Filtro de Diagnóstico -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <span>Diagnóstico o Código CIE</span>
+                </label>
+                <input type="text" class="input" id="asistidoFiltroDx" placeholder="Ej: Depresión, F32, Diabetes, Ansiedad..." oninput="actualizarResumenHumano()">
+                <div class="asistido-quick-pills">
+                  <span class="asistido-pills-label">Sugerencias:</span>
+                  <button type="button" class="asistido-quick-pill" onclick="aplicarQuickDx('F32')">Depresión (F32)</button>
+                  <button type="button" class="asistido-quick-pill" onclick="aplicarQuickDx('F41')">Ansiedad (F41)</button>
+                  <button type="button" class="asistido-quick-pill" onclick="aplicarQuickDx('D50')">Anemia (D50)</button>
+                  <button type="button" class="asistido-quick-pill" onclick="aplicarQuickDx('I10')">Hipertensión (I10)</button>
+                  <button type="button" class="asistido-quick-pill" onclick="aplicarQuickDx('E11')">Diabetes (E11)</button>
+                </div>
+              </div>
+
+              <!-- Filtro de Profesional -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span>Médico o Profesional</span>
+                </label>
+                <input type="text" class="input" id="asistidoFiltroPersonal" placeholder="Nombre, apellido o DNI del profesional..." oninput="actualizarResumenHumano()">
+              </div>
+
+              <!-- Filtro de Servicio / UPS -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  <span>Servicio o Especialidad (UPS)</span>
+                </label>
+                <select class="select-native" id="asistidoFiltroUps" onchange="actualizarResumenHumano()">
+                  <option value="">Todos los servicios / especialidades</option>
+                </select>
+              </div>
+
+              <!-- Filtro de Establecimiento -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  <span>Establecimiento de salud</span>
+                </label>
+                <select class="select-native" id="asistidoFiltroEstablecimiento" onchange="actualizarResumenHumano()">
+                  <option value="">Todos los establecimientos</option>
+                </select>
+              </div>
+
+              <!-- Filtro de Población (Sexo y Edad) -->
+              <div class="asistido-field-wrap">
+                <label class="asistido-field-label">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span>Población / Edad y Sexo</span>
+                </label>
+                <div style="display:flex; gap:8px;">
+                  <select class="select-native input-sm" id="asistidoFiltroSexo" style="flex:1;" onchange="actualizarResumenHumano()">
+                    <option value="">Ambos sexos</option>
+                    <option value="F">Mujeres</option>
+                    <option value="M">Hombres</option>
+                  </select>
+                  <select class="select-native input-sm" id="asistidoFiltroGrupoEdad" style="flex:1.2;" onchange="actualizarResumenHumano()">
+                    <option value="">Todas las edades</option>
+                    <option value="ninos">Niños (0 - 11 años)</option>
+                    <option value="adolescentes">Adolescentes (12 - 17)</option>
+                    <option value="adultos">Adultos (18 - 59)</option>
+                    <option value="mayores">Adultos mayores (60+)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Previsualización en Lenguaje Natural -->
+        <div class="human-query-preview" id="humanQueryPreview">
+          <div class="human-preview-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </div>
+          <div class="human-preview-text">
+            <span>Se consultará: </span>
+            <strong id="humanPreviewMeasure" class="human-highlight">Pacientes únicos</strong>
+            <span> organizados </span>
+            <strong id="humanPreviewGroupBy" class="human-highlight">por Diagnóstico</strong>
+            <span id="humanPreviewPeriod"> en el año 2026</span>
+            <span id="humanPreviewConditions"> sin filtros adicionales</span>.
+          </div>
+        </div>
+
+        <!-- 4. Barra de Acciones del Modo Asistido -->
+        <div class="asistido-actions-bar">
+          <button type="button" class="btn btn-secondary" onclick="limpiarFiltrosAsistidos()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <span>Restablecer</span>
+          </button>
+          
+          <button type="button" class="btn btn-link text-sm" onclick="copiarAsistidoAModoAvanzado()" title="Ver estos mismos filtros en el constructor con lógica Y / O">
+            <span>Ver cómo queda en Modo Avanzado →</span>
+          </button>
+
+          <button type="button" class="btn btn-primary btn-lg" id="btnEjecutarAsistido" onclick="ejecutarConsultaAsistida()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <span>Consultar información</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════════
+           MODO AVANZADO: CONSTRUCTOR MULTIDIMENSIONAL CON LÓGICA Y / O
+           ═══════════════════════════════════════════════════════════════════ -->
+      <div id="panelModoAvanzado" style="display:none;">
+        <div class="modo-avanzado-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div>
+            <strong>Modo Avanzado:</strong> Diseñado para analistas estadísticos que requieren combinar bloques lógicos (Y / O), rangos personalizados y filtros multidimensionales anidados.
+          </div>
+        </div>
+
+        <div id="queryPanelBody" class="query-panel-body">
+          <!-- Medida y campos de agrupación que definen el desglose solicitado. -->
+          <div class="query-builder-toolbar">
+            <div class="field compact">
+              <label class="label">Medida a calcular</label>
+              <select class="select-native" id="queryMeasure">
+                <option value="pacientesUnicos">Pacientes únicos (personas atendidas)</option>
+                <option value="atenciones">Atenciones (citas médicas únicas)</option>
+                <option value="registros">Registros HIS totales</option>
+                <option value="codigosUnicos">Códigos HIS distintos</option>
+                <option value="sumLab">Suma de valores LAB</option>
+                <option value="avgLab">Promedio de valores LAB</option>
+                <option value="avgEdad">Edad promedio (años registrados)</option>
+                <option value="avgPeso">Peso promedio</option>
+                <option value="maxPeso">Peso máximo</option>
+                <option value="avgTalla">Talla promedio</option>
+                <option value="maxTalla">Talla máxima</option>
+                <option value="avgHemoglobina">Hemoglobina promedio</option>
+                <option value="maxHemoglobina">Hemoglobina máxima</option>
+              </select>
+            </div>
+            <div class="field compact">
+              <label class="label" id="queryGroupByLabel">Agrupar resultados por</label>
+              <div class="group-by-picker" id="queryGroupByPicker">
+                <button class="select-native group-by-toggle" id="queryGroupByToggle" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="queryGroupByLabel queryGroupBySummary">
+                  <span id="queryGroupBySummary">Seleccione campos</span>
+                  <span class="group-by-chevron" aria-hidden="true"></span>
+                </button>
+                <div class="group-by-menu" id="queryGroupByMenu" role="listbox" aria-labelledby="queryGroupByLabel" aria-multiselectable="true" hidden></div>
+              </div>
+              <select class="select-native group-by-source" id="queryGroupBy" multiple tabindex="-1" aria-hidden="true">
+                <option value="diagnostico" selected>Diagnóstico CIE-10</option>
+                <option value="establecimiento">Establecimiento</option>
+                <option value="departamento">Departamento</option>
+                <option value="provincia">Provincia</option>
+                <option value="profesional">Profesional</option>
+                <option value="mes">Mes</option>
+                <option value="dia">Día</option>
+                <option value="año">Año</option>
+                <option value="codigoHIS">Código HIS</option>
+                <option value="tipoDiagnostico">Tipo de diagnóstico HIS</option>
+                <option value="financiador">Financiador</option>
+                <option value="sexo">Sexo</option>
+                <option value="ups">UPS / Servicio</option>
+                <option value="idPaciente">ID del paciente</option>
+                <option value="documento">Nro. Documento</option>
+                <option value="nombrePaciente">Nombre del paciente</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Cada grupo combina sus criterios; las conexiones entre grupos pueden variar. -->
+          <div class="query-filters-box">
+            <div class="query-filters-header">
+              <span>Bloques de condiciones</span>
+              <div class="actions">
+                <button class="btn btn-secondary btn-sm" id="btnAgregarGrupo">Agregar bloque</button>
+              </div>
+            </div>
+            <p class="query-logic-hint">Configure cómo se evalúan las condiciones. Por ejemplo, "Misma Cita" comprueba que los diagnósticos o procedimientos hayan ocurrido juntos en la misma consulta.</p>
+            <div id="queryFilters" class="query-filter-groups"></div>
+          </div>
+
+          <div class="query-period-row form-grid-2">
+            <div class="field">
+              <label class="label">Fecha inicio</label>
+              <input type="date" class="input" id="queryFechaInicio">
+            </div>
+            <div class="field">
+              <label class="label">Fecha fin</label>
+              <input type="date" class="input" id="queryFechaFin">
+            </div>
+          </div>
+
+          <div class="actions actions-right" style="margin-top:16px;">
+            <button class="btn btn-secondary" id="btnResetQuery">Restablecer</button>
+            <button class="btn btn-primary" id="btnRunQuery">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              Consultar en Modo Avanzado
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel de resultados de la consulta (ancho completo, interactivo) -->
+    <div class="results-panel card" id="resultsPanel">
+      <div class="card-header results-header-wrap">
+        <div>
+          <div class="card-title-row">
+            <span class="card-title">Resultados de la consulta</span>
+            <span class="results-status-badge" id="resultsHeaderBadge">Sin datos</span>
+          </div>
+          <div class="card-subtitle">Resultados interactivos: haga clic en un paciente, código, profesional o citas para ver el detalle clínico</div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary btn-sm" id="btnSaveQuery">Guardar consulta</button>
+          <button class="btn btn-secondary btn-sm" id="btnLoadSavedQueries">Consultas guardadas</button>
+          <button class="btn btn-secondary btn-sm" id="btnToggleChart" onclick="toggleQueryChart()" title="Mostrar u ocultar gráfica de distribución">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            <span id="btnToggleChartLabel">Ocultar gráfico</span>
+          </button>
+          <button class="btn btn-secondary btn-sm btn-export-excel" id="btnExportExcel" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg> Excel</button>
+          <button class="btn btn-secondary btn-sm btn-export-pdf" id="btnExportPdf" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg> PDF</button>
+        </div>
+      </div>
+
+      <!-- Tarjetas ejecutivas de resumen analítico -->
+      <div class="summary-strip executive-kpi-grid" id="resultSummary">
+        <div class="summary-kpi-card card-kpi-measure">
+          <div class="kpi-icon-wrap icon-measure">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-title" id="summaryTotalLabel">Resultado total</span>
+            <strong class="kpi-number" id="summaryTotal">—</strong>
+            <span class="kpi-sub">Métrica principal calculada</span>
+          </div>
+        </div>
+
+        <div class="summary-kpi-card card-kpi-records">
+          <div class="kpi-icon-wrap icon-records">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-title">Registros HIS</span>
+            <strong class="kpi-number" id="summaryRecords">—</strong>
+            <span class="kpi-sub">Filas de producción asistencial</span>
+          </div>
+        </div>
+
+        <div class="summary-kpi-card card-kpi-appointments">
+          <div class="kpi-icon-wrap icon-appointments">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-title">Citas únicas</span>
+            <strong class="kpi-number" id="summaryAppointments">—</strong>
+            <span class="kpi-sub">Atenciones asistenciales distintas</span>
+          </div>
+        </div>
+
+        <div class="summary-kpi-card card-kpi-patients">
+          <div class="kpi-icon-wrap icon-patients">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 0l-3-3m0 0l3-3m-3 3h8"/></svg>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-title">Pacientes únicos</span>
+            <strong class="kpi-number" id="summaryPatients">—</strong>
+            <span class="kpi-sub">Personas distintas atendidas</span>
+          </div>
+        </div>
+
+        <div class="summary-kpi-card card-kpi-rows">
+          <div class="kpi-icon-wrap icon-rows">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <div class="kpi-content">
+            <span class="kpi-title">Filas resultantes</span>
+            <strong class="kpi-number" id="summaryRows">—</strong>
+            <span class="kpi-sub">Grupos generados por la consulta</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-hint" style="margin-top:-8px; margin-bottom:12px;">El total general se calcula directamente sobre los filtros; un paciente puede aparecer en varias filas cuando se agrupa por distintas dimensiones.</div>
+
+      <!-- Gráfico de distribución visual expandido -->
+      <div id="queryChartWrap" class="chart-container-wrap">
+        <div id="queryChart" class="chart-shell"><div class="table-empty">Ejecute una consulta para visualizar el análisis.</div></div>
+      </div>
+
+      <!-- Barra de herramientas de la tabla interactiva (Filtro en vivo, Paginación, Orden) -->
+      <div class="results-table-toolbar">
+        <div class="table-search-box">
+          <svg class="search-box-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="search" class="input input-sm" id="queryResultFilterInput" placeholder="Buscar en resultados (DNI, código, nombre, etc.)..." oninput="filtrarResultadosEnTabla()" autocomplete="off">
+        </div>
+        <div class="table-toolbar-right">
+          <div class="page-size-selector">
+            <label for="queryResultPageSize">Mostrar por pág:</label>
+            <select class="select-native input-sm" id="queryResultPageSize" onchange="cambiarPageSizeResultados(this.value)">
+              <option value="15">15</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todas</option>
+            </select>
+          </div>
+          <span class="table-sort-badge" id="querySortBadge" title="Haga clic en cualquier columna para ordenar ascendente o descendente">
+            <span class="sort-badge-icon">↕</span>
+            <span id="querySortBadgeText">Orden: Predeterminado</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Tabla interactiva con cabeceras ordenables y celdas clicables -->
+      <div class="table-wrap results-table-wrapper">
+        <table id="queryResultTable" aria-label="Resultados interactivos de la consulta">
+          <thead><tr><th>Resultado</th></tr></thead>
+          <tbody><tr><td class="table-empty">Configure las condiciones y ejecute una consulta.</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Paginación de resultados de la consulta -->
+      <div class="patient-pagination query-table-pagination" id="queryResultPagination" hidden></div>
+    </div>
+  </div>
+</section>
+
+<!-- Vista: reportes de producción asistencial -->
+<section id="view-reportes" class="view prod-view-dashboard">
+  <!-- Contenedor Principal del Dashboard Médico -->
+  <div class="prod-canvas-card">
+    
+    <!-- Barra Superior / Header del Dashboard -->
+    <header class="prod-canvas-header">
+      <div class="prod-header-brand">
+        <div class="prod-brand-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div class="prod-brand-text">
+          <h2 class="prod-brand-title">ANÁLISIS DE SALUD Y PRODUCCIÓN — HIS MINSA</h2>
+          <p class="prod-brand-sub">Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»</p>
+        </div>
+      </div>
+
+      <!-- Selector Central de Pestañas tipo Píldora -->
+      <nav class="prod-pill-tabs" role="tablist" aria-label="Secciones de Producción">
+        <button type="button" class="prod-pill-tab active" id="tabBtnProdTendencia" onclick="cambiarTabProduccion('tendencia')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          <span>Resumen y Tendencia</span>
+        </button>
+        <button type="button" class="prod-pill-tab" id="tabBtnProdTratamientos" onclick="cambiarTabProduccion('tratamientos')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span>Tratamientos y Procedimientos</span>
+          <span class="prod-pill-badge" id="prodBadgeTratamientos">0</span>
+        </button>
+        <button type="button" class="prod-pill-tab" id="tabBtnProdPersonal" onclick="cambiarTabProduccion('personal')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 0l-3-3m0 0l3-3m-3 3h8"/></svg>
+          <span>Personal de Salud</span>
+          <span class="prod-pill-badge" id="prodBadgePersonal">0</span>
+        </button>
+      </nav>
+
+      <!-- Meta Información y Botón de Restablecer -->
+      <div class="prod-header-meta">
+        <div class="prod-meta-updated">
+          <span class="prod-meta-label">Última actualización:</span>
+          <span class="prod-meta-time" id="prodLastUpdated">—</span>
+        </div>
+        <button type="button" class="prod-reset-btn" onclick="limpiarFiltrosProduccion()" title="Restablecer todos los filtros a sus valores iniciales">
+          <span>RESTABLECER</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Disposición Principal del Dashboard (Filtros a la Izquierda, Contenido a la Derecha) -->
+    <div class="prod-canvas-body">
+      
+      <!-- Columna Lateral Izquierda: Panel Sólido Morado (Estilo Sidebar de la Imagen) -->
+      <aside class="prod-sidebar-vibrant">
+        <!-- Encabezado Píldora: Menú de Filtros -->
+        <div class="prod-filter-pill-header">
+          <span>Menú de Filtros</span>
+        </div>
+
+        <div class="prod-filter-form">
+          <!-- Diagnóstico / Tratamiento / Procedimiento Seleccionable -->
+          <div class="prod-form-group prod-autocomplete-container" id="prodTratamientoContainer">
+            <div class="prod-field-label-row">
+              <label class="prod-field-label" for="prodFiltroTratamiento">Diagnóstico / Procedimiento</label>
+              <span class="prod-field-hint" id="prodDiagHint">Buscar o seleccionar</span>
+            </div>
+            <div class="prod-input-box">
+              <input class="prod-input" id="prodFiltroTratamiento" placeholder="Código o nombre…" autocomplete="off">
+              <input type="hidden" id="prodFiltroTratamientoCodigo" value="">
+              <button type="button" class="prod-input-clear" id="prodTratamientoClearBtn" onclick="limpiarFiltroTratamiento()" title="Quitar filtro" style="display:none;">✕</button>
+            </div>
+            <!-- Chip que muestra el diagnóstico seleccionado con exactitud -->
+            <div id="prodDiagSelectedChip" class="prod-selected-diag-chip" style="display:none;"></div>
+            <!-- Menú desplegable flotante con resultados y frecuentes -->
+            <div id="prodDiagDropdown" class="prod-diag-dropdown" style="display:none;" role="listbox"></div>
+          </div>
+
+          <!-- Selector de Año -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroAnio">Año</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroAnio" onchange="aplicarFiltrosProduccion()">
+                <option value="2026" selected>2026</option>
+                <option value="">Todos los años</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Selector de Mes -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroMes">Mes</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroMes" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todo el año</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Filtro por Establecimiento -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroEstablecimiento">Establecimiento</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroEstablecimiento" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todos los establecimientos</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Filtro por Servicio / UPS -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroUps">Servicio (UPS)</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroUps" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todos los servicios</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <input type="hidden" id="reporteDesde">
+          <input type="hidden" id="reporteHasta">
+
+          <!-- Botones de Acción de Filtro -->
+          <div class="prod-filter-btn-grid">
+            <button type="button" class="prod-btn-primary" onclick="aplicarFiltrosProduccion()" title="Consultar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              Filtrar
+            </button>
+            <button type="button" class="prod-btn-secondary" onclick="limpiarFiltrosProduccion()" title="Restablecer">
+              Limpiar
+            </button>
+          </div>
+
+          <!-- Botones de Exportación -->
+          <div class="prod-export-btn-grid">
+            <button type="button" class="prod-btn-export btn-export-excel" data-export="produccion" data-formato="excel" title="Exportar Excel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+              Excel
+            </button>
+            <button type="button" class="prod-btn-export btn-export-pdf" data-export="produccion" data-formato="pdf" title="Exportar PDF">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+              PDF
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Filtros Activos -->
+        <div id="prodFiltrosActivosBar" class="prod-active-pill-bar" style="display:none;"></div>
+
+        <!-- Botón / Tarjeta Key Highlights -->
+        <div class="prod-sidebar-highlights">
+          <div class="prod-highlights-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Aspectos Clave</span>
+          </div>
+          <div class="prod-sidebar-meta-info">
+            <div><span class="meta-dot"></span> Base Nominal HIS MINSA</div>
+            <div>Periodo: <strong id="prodIndPeriodo">2026</strong></div>
+          </div>
+        </div>
+
+        <!-- Logotipo Institucional al pie del menú lateral -->
+        <div class="prod-sidebar-brand-foot">
+          <div class="brand-foot-circle">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <div class="brand-foot-text">HOSPITAL REGIONAL DE AYACUCHO</div>
+        </div>
+      </aside>
+
+      <!-- Columna Principal Derecha: KPIs y Paneles -->
+      <main class="prod-main-content">
+        <!-- 1. Cuadrícula Superior de 6 KPIs Ejecutivos (Exacto al Mockup) -->
+        <div class="prod-kpi-grid" id="reporteMetricas">
+          <div class="table-empty"><span class="spinner-sm"></span> Calculando producción asistencial...</div>
+        </div>
+
+        <!-- 2. Contenido de las Pestañas de Navegación -->
+        <div class="prod-workspace-content">
+          <!-- Pestaña 1: Resumen y Tendencia con la estructura de 3 bloques -->
+          <div class="prod-panel active" id="prodPanel-tendencia">
+            <div class="prod-dashboard-grid">
+              
+              <!-- Columna Izquierda: Donut de Distribución y Gráfico Lollipop de Tratamientos -->
+              <div class="prod-col-left">
+                <!-- 1. Distribución de Atenciones (Donut Chart) -->
+                <section class="prod-content-card">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Distribución por Establecimiento</h3>
+                      <p class="prod-card-sub">Participación porcentual en atenciones de salud</p>
+                    </div>
+                  </div>
+                  <div id="reporteDonutEstablecimientos" class="prod-donut-container"></div>
+                </section>
+
+                <!-- 2. Tratamientos y Procedimientos Frecuentes (Lollipop Chart) -->
+                <section class="prod-content-card" style="margin-top: 16px;">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Tratamientos y Procedimientos Frecuentes</h3>
+                      <p class="prod-card-sub">Procedimientos CPMS y diagnósticos CIE-10 con mayor demanda</p>
+                    </div>
+                  </div>
+                  <div id="reporteLollipopTratamientos" class="prod-lollipop-list"></div>
+                </section>
+              </div>
+
+              <!-- Columna Derecha: Evolución Temporal (Barras Verticales) y Matriz de Producción -->
+              <div class="prod-col-right">
+                <!-- 3. Evolución Temporal (Vertical Bar Chart) -->
+                <section class="prod-content-card">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title" id="reporteTendenciaTitle">Evolución de citas atendidas</h3>
+                      <p class="prod-card-sub" id="reporteTendenciaSub">Haga clic en una barra para filtrar directamente</p>
+                    </div>
+                    <div id="btnVolverMensualWrap" style="display:none;">
+                      <button type="button" class="prod-sub-btn" onclick="aplicarFiltroRapidoProd('mes', '')" title="Volver a ver todo el año">
+                        Ver año completo
+                      </button>
+                    </div>
+                  </div>
+                  <div id="reporteMeses" class="prod-vertical-chart"></div>
+                </section>
+
+                <!-- 4. Matriz de Producción Asistencial (Tabla con Totales) -->
+                <section class="prod-content-card" style="margin-top: 16px;">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Matriz de Producción Asistencial</h3>
+                      <p class="prod-card-sub">Resumen consolidado por centro de salud</p>
+                    </div>
+                  </div>
+                  <div class="table-wrap">
+                    <table class="prod-clean-table prod-matrix-table sortable-table" id="reporteMatrizEstablecimientos">
+                      <thead>
+                        <tr>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('nombre')" title="Clic para ordenar de menor a mayor por Establecimiento" style="min-width: 150px;"><span class="th-content"><span>Establecimiento</span><span class="th-sort-indicator" id="sortInd-estab-nombre">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('registros')" title="Clic para ordenar de menor a mayor por Registros" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-estab-registros">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-estab-atenciones">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-estab-pacientes">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('pct')" title="Clic para ordenar de menor a mayor por % Total" style="text-align: right; min-width: 80px;"><span class="th-content" style="justify-content: flex-end;"><span>% Total</span><span class="th-sort-indicator" id="sortInd-estab-pct">↕</span></span></th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                      <tfoot></tfoot>
+                    </table>
+                  </div>
+                  <!-- Elemento oculto para compatibilidad con llamadas existentes a reporteEstablecimientos -->
+                  <div id="reporteEstablecimientos" style="display:none;"></div>
+                </section>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Pestaña 2: Tratamientos, Procedimientos CPMS y Diagnósticos CIE-10 -->
+          <div class="prod-panel" id="prodPanel-tratamientos" style="display:none;">
+            <section class="prod-content-card">
+              <div class="prod-card-header">
+                <div>
+                  <h3 class="prod-card-title">Tratamientos, Procedimientos y Diagnósticos Frecuentes</h3>
+                  <p class="prod-card-sub">Volumen de registros HIS, citas atendidas y pacientes únicos</p>
+                </div>
+                <div class="prod-table-search-wrap">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-table-search-input" id="buscarEnTablaTratamientos" placeholder="Filtrar en esta tabla..." oninput="filtrarTablaTratamientosLocal(this.value)">
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reporteDiagnosticosTabla" class="prod-clean-table sortable-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('codigo')" title="Clic para ordenar de menor a mayor por Código" style="min-width: 90px;"><span class="th-content"><span>Código</span><span class="th-sort-indicator" id="sortInd-diag-codigo">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('descripcion')" title="Clic para ordenar de menor a mayor por Descripción" style="min-width: 250px;"><span class="th-content"><span>Descripción del Tratamiento / Procedimiento</span><span class="th-sort-indicator" id="sortInd-diag-descripcion">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('tipo')" title="Clic para ordenar de menor a mayor por Tipo" style="min-width: 85px;"><span class="th-content"><span>Tipo</span><span class="th-sort-indicator" id="sortInd-diag-tipo">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('registros')" title="Clic para ordenar de menor a mayor por Registros" style="min-width: 100px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-diag-registros">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-diag-atenciones">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-diag-pacientes">↕</span></span></th>
+                      <th style="min-width: 140px; text-align: right;" data-no-sort="true">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <!-- Pestaña 3: Rendimiento de Personal de Salud -->
+          <div class="prod-panel" id="prodPanel-personal" style="display:none;">
+            <section class="prod-content-card">
+              <div class="prod-card-header">
+                <div>
+                  <h3 class="prod-card-title">Producción por personal de salud</h3>
+                  <p class="prod-card-sub">Actividad y pacientes atendidos por cada profesional de la salud</p>
+                </div>
+                <div class="prod-table-search-wrap">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-table-search-input" id="buscarEnTablaPersonal" placeholder="Filtrar por profesional o DNI..." oninput="filtrarTablaPersonalLocal(this.value)">
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reportePersonalTabla" class="prod-clean-table sortable-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('nombre')" title="Clic para ordenar de menor a mayor por Profesional" style="min-width: 180px;"><span class="th-content"><span>Profesional</span><span class="th-sort-indicator" id="sortInd-pers-nombre">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('documento')" title="Clic para ordenar de menor a mayor por Documento" style="min-width: 100px;"><span class="th-content"><span>Documento</span><span class="th-sort-indicator" id="sortInd-pers-documento">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('profesion')" title="Clic para ordenar de menor a mayor por Profesión" style="min-width: 140px;"><span class="th-content"><span>Profesión</span><span class="th-sort-indicator" id="sortInd-pers-profesion">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('registros')" title="Clic para ordenar de menor a mayor por Registros" style="min-width: 100px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-pers-registros">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-pers-atenciones">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-pers-pacientes">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('ultimaAtencion')" title="Clic para ordenar de menor a mayor por Última atención" style="min-width: 110px;"><span class="th-content"><span>Última atención</span><span class="th-sort-indicator" id="sortInd-pers-ultimaAtencion">↕</span></span></th>
+                      <th style="min-width: 210px; text-align: right;" data-no-sort="true">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</section>
+
+<!-- Vista: configuración de la API -->
+<section id="view-config" class="view">
+  <div class="cfg-tabs" role="tablist" aria-label="Secciones de configuración">
+    <button type="button" class="cfg-tab cfg-admin active" role="tab" data-cfg-tab="estado" aria-selected="true" onclick="cambiarTabConfig('estado')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg> Estado del sistema</button>
+    <button type="button" class="cfg-tab cfg-admin" role="tab" data-cfg-tab="usuarios" aria-selected="false" onclick="cambiarTabConfig('usuarios')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg> Usuarios y accesos</button>
+    <button type="button" class="cfg-tab cfg-admin" role="tab" data-cfg-tab="seguridad" aria-selected="false" onclick="cambiarTabConfig('seguridad')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Seguridad de la sesión</button>
+    <button type="button" class="cfg-tab" role="tab" data-cfg-tab="conexion" aria-selected="false" onclick="cambiarTabConfig('conexion')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7H6a5 5 0 000 10h3M15 7h3a5 5 0 010 10h-3M8 12h8"/></svg> Conexión</button>
+  </div>
+  <div class="cfg-panel cfg-admin" id="cfgEstado" data-cfg-panel="estado"></div>
+  <div class="cfg-panel cfg-admin" id="cfgUsuarios" data-cfg-panel="usuarios" hidden></div>
+  <div class="cfg-panel cfg-admin" id="cfgSeguridad" data-cfg-panel="seguridad" hidden></div>
+  <div class="cfg-panel" data-cfg-panel="conexion" hidden>
+  <!-- Parámetros persistentes de conexión y acción para comprobar disponibilidad. -->
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Configuración de conexión</div><div class="card-subtitle">Configure la URL de la API backend conectada a SQL Server</div></div></div>
+    <div class="form-grid-2">
+      <div class="field span-full"><label class="label">URL base de la API</label><input class="input" id="apiUrlInput" placeholder="http://localhost:3000/api"></div>
+    </div>
+    <div class="actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="guardarConfig()">Guardar configuración</button><button class="btn btn-primary" onclick="probarAPI()">Probar conexión</button></div>
+  </div>
+  </div>
+</section>
+
+<!-- Vista: importación de archivos planos (solo administradores). Sigue el formulario de la aplicación de escritorio HIS. -->
+<section id="view-importar" class="view">
+  <!-- Totales actuales de las tablas que se actualizan. -->
+  <div class="kpi-grid import-kpis">
+    <div class="kpi-card"><div class="kpi-label">Maestro de pacientes</div><div class="kpi-value" id="impTotalPaciente">—</div><div class="kpi-foot">Registros en MaestroPaciente</div></div>
+    <div class="kpi-card"><div class="kpi-label">Maestro de personal</div><div class="kpi-value" id="impTotalPersonal">—</div><div class="kpi-foot">Registros en MaestroPersonal</div></div>
+    <div class="kpi-card"><div class="kpi-label">Maestro de registradores</div><div class="kpi-value" id="impTotalRegistrador">—</div><div class="kpi-foot">Registros en MaestroRegistrador</div></div>
+    <div class="kpi-card accent"><div class="kpi-label">Producción nominal <span id="impKpiAnio"></span></div><div class="kpi-value" id="impTotalNominal">—</div><div class="kpi-foot">Registros HIS en NProduccion</div></div>
+  </div>
+
+  <!-- Formulario principal: una fila por tipo de archivo, con su modo de importación. -->
+  <section class="card import-panel">
+    <div class="card-header">
+      <div><div class="card-title">Importación de archivos planos</div><div class="card-subtitle">Elige los archivos con el botón «…» y el modo de cada uno. Solo se importan las filas que tengan archivo.</div></div>
+    </div>
+    <div class="import-layout">
+      <fieldset class="import-fieldset">
+        <legend>Archivos planos CSV</legend>
+        <div class="import-row" data-row="paciente">
+          <label class="import-row-label" for="impFilePaciente">Paciente</label>
+          <div class="import-path" id="impPathPaciente" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePaciente" title="Elegir MaestroPaciente.csv" aria-label="Elegir archivo de pacientes">…</button>
+          <input type="file" id="impFilePaciente" accept=".csv,.txt" data-row="paciente" hidden>
+          <select class="select-native import-mode" id="impModoPaciente" aria-label="Modo de importación de Paciente">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row" data-row="personal">
+          <label class="import-row-label" for="impFilePersonal">Personal</label>
+          <div class="import-path" id="impPathPersonal" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePersonal" title="Elegir MaestroPersonal.csv" aria-label="Elegir archivo de personal">…</button>
+          <input type="file" id="impFilePersonal" accept=".csv,.txt" data-row="personal" hidden>
+          <select class="select-native import-mode" id="impModoPersonal" aria-label="Modo de importación de Personal">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row" data-row="registrador">
+          <label class="import-row-label" for="impFileRegistrador">Registrador</label>
+          <div class="import-path" id="impPathRegistrador" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileRegistrador" title="Elegir MaestroRegistrador.csv" aria-label="Elegir archivo de registradores">…</button>
+          <input type="file" id="impFileRegistrador" accept=".csv,.txt" data-row="registrador" hidden>
+          <select class="select-native import-mode" id="impModoRegistrador" aria-label="Modo de importación de Registrador">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row import-row-nominal" data-row="nominal">
+          <label class="import-row-label" for="impFileNominal">Nominal</label>
+          <div class="import-path" id="impPathNominal" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileNominal" title="Elegir los CSV de la trama nominal (puedes elegir varios)" aria-label="Elegir archivos de la trama nominal">…</button>
+          <input type="file" id="impFileNominal" accept=".csv,.txt" data-row="nominal" multiple hidden>
+          <select class="select-native import-mode" id="impModoNominal" aria-label="Modo de importación de Nominal"></select>
+        </div>
+        <ul class="import-file-list" id="impNominalList" hidden></ul>
+      </fieldset>
+
+      <div class="import-side">
+        <button class="import-big-btn primary" id="impBtnImportar" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v11m0-11l-4 4m4-4l4 4"/></svg>
+          Importar
+        </button>
+        <button class="import-big-btn" id="impBtnSalir" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-8 9 8M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+          Salir
+        </button>
+      </div>
+    </div>
+
+    <!-- Resumen de lo que hará cada fila según su modo, para revisar antes de importar. -->
+    <div class="import-plan" id="impPlan" hidden>
+      <div class="import-plan-title">Se importará</div>
+      <ul id="impPlanList"></ul>
+    </div>
+    <label class="import-confirm" for="impConfirm" id="impConfirmBox" hidden>
+      <input type="checkbox" id="impConfirm">
+      <span id="impConfirmText">Entiendo que se borrarán datos antes de cargar los archivos.</span>
+    </label>
+    <div class="import-options">
+      <div class="field import-encoding">
+        <label class="label" for="impEncoding">Codificación de los archivos</label>
+        <select class="select-native" id="impEncoding">
+          <option value="auto">Detectar automáticamente</option>
+          <option value="ansi">ANSI / Windows (como el script)</option>
+          <option value="utf8">UTF-8</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- Progreso y registro de la importación en curso o de la última realizada. -->
+  <section class="card" id="impStatusCard" hidden>
+    <div class="card-header">
+      <div><div class="card-title">Progreso de la importación</div><div class="card-subtitle" id="impStatusMeta"></div></div>
+      <span class="import-badge" id="impStatusBadge"></span>
+    </div>
+    <div class="import-phase" id="impPhase"></div>
+    <div class="import-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="impProgress"><span id="impProgressBar"></span></div>
+    <div class="import-progress-meta"><span id="impProgressText"></span><span id="impRowsText"></span></div>
+    <div class="alert" id="impResultAlert"></div>
+    <ol class="import-log" id="impLog" aria-live="polite"></ol>
+  </section>
+
+  <!-- Equivale a la consulta «CONTABILIZAR REGISTROS» del script. -->
+  <section class="card">
+    <div class="card-header">
+      <div><div class="card-title">Registros por mes</div><div class="card-subtitle">Producción nominal registrada en NProduccion</div></div>
+      <div class="actions"><label class="label" for="impAnioResumen">Año</label><select class="select-native import-year" id="impAnioResumen"></select></div>
+    </div>
+    <div class="table-wrap"><table id="impMesesTabla"><thead><tr><th>Mes</th><th>Registros HIS</th></tr></thead><tbody><tr><td colspan="2" class="table-empty">Cargando...</td></tr></tbody></table></div>
+  </section>
+</section>
+
+<!-- Perfil del usuario activo y formulario administrativo de alta de cuentas. -->
+<section id="view-perfil" class="view">
+  <section class="card">
+    <div class="card-header">
+      <div><div class="card-title">Mi perfil</div><div class="card-subtitle">Información asociada a tu cuenta del sistema</div></div>
+    </div>
+    <div class="profile-grid" id="profileDetails" aria-live="polite"></div>
+  </section>
+
+  <section class="card" id="adminUserFormCard" hidden>
+    <div class="card-header">
+      <div><div class="card-title">Crear cuenta de usuario</div><div class="card-subtitle">Solo los administradores pueden registrar nuevas cuentas. La contraseña debe tener al menos 12 caracteres.</div></div>
+    </div>
+    <form id="createUserForm">
+      <div class="form-grid-3">
+        <div class="field">
+          <label class="label" for="newUserRole">Tipo de cuenta <span class="required">*</span></label>
+          <select class="select-native" id="newUserRole" name="role" required>
+            <option value="doctor">Médico</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <div class="field span-2" id="personSearchField">
+          <label class="label" for="personSearch">Buscar médico en el catálogo HIS <span class="required">*</span></label>
+          <input class="input" id="personSearch" type="search" placeholder="Nombre o DNI (mínimo 2 caracteres)" autocomplete="off">
+          <select class="select-native" id="personMatch" style="margin-top:8px" aria-label="Médico encontrado en el catálogo">
+            <option value="">Escribe para buscar y selecciona un médico</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserUsername">Usuario <span class="required">*</span></label>
+          <input class="input" id="newUserUsername" name="username" minlength="3" maxlength="100" autocomplete="off" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserPassword">Contraseña temporal <span class="required">*</span></label>
+          <input class="input" id="newUserPassword" name="password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserFullName">Nombre completo <span class="required">*</span></label>
+          <input class="input" id="newUserFullName" name="fullName" maxlength="200" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserDni">DNI <span class="required">*</span></label>
+          <input class="input" id="newUserDni" name="dni" maxlength="20" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserEmail">Correo electrónico <span class="required">*</span></label>
+          <input class="input" id="newUserEmail" name="email" type="email" maxlength="254" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserPhone">Teléfono <span class="required">*</span></label>
+          <input class="input" id="newUserPhone" name="phone" type="tel" maxlength="30" autocomplete="tel" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserProfession">Profesión</label>
+          <input class="input" id="newUserProfession" name="profession" maxlength="120" readonly>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserSpecialty">Especialidad <span class="required" id="specialtyRequired">*</span></label>
+          <input class="input" id="newUserSpecialty" name="specialty" maxlength="120" placeholder="Ej. Medicina interna">
+        </div>
+        <div class="field">
+          <label class="label" for="newUserCmp">N.º de colegiatura (CMP)</label>
+          <input class="input" id="newUserCmp" name="cmp" maxlength="50" readonly>
+        </div>
+        <div class="field span-2">
+          <label class="label" for="newUserEstablishment">Establecimiento</label>
+          <input class="input" id="newUserEstablishment" name="establishment" maxlength="200" readonly>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:18px">
+        <button class="btn btn-primary" id="createUserSubmit" type="submit">Crear cuenta</button>
+      </div>
+      <p class="login-status" id="createUserStatus" role="status" aria-live="polite" hidden></p>
+    </form>
+  </section>
+
+  <section class="card profile-logout-card">
+    <div><div class="card-title">Cerrar sesión</div><div class="card-subtitle">Cierra tu acceso seguro a HIS MINSA en este navegador.</div></div>
+    <button class="btn btn-danger" id="logoutButton" type="button">Cerrar sesión</button>
+  </section>
+</section>
+
+</div>
+</main>
+</div>
+
+<!-- Contenedor de notificaciones temporales -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Ventana modal compartida -->
+<!-- El clic sobre el fondo cierra el diálogo; su contenido se rellena desde JavaScript. -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)cerrarModal()">
+  <div class="modal-box">
+    <div class="modal-header"><h3 id="modalTitle">Resultados</h3><button class="btn btn-ghost" onclick="cerrarModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalCodigoActividad" onclick="if(event.target===this)cerrarModalCodigoActividad()">
+  <div class="modal-box modal-xl">
+    <div class="modal-header">
+      <div class="modal-header-info">
+        <div class="modal-eyebrow">Actividad clínica de código HIS</div>
+        <h3 id="modalCodigoTitle" class="modal-title-with-badge">
+          <span class="code-badge font-bold" id="modalCodigoBadge">—</span>
+          <span id="modalCodigoDesc">Cargando código...</span>
+        </h3>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" id="btnFiltrarPorEsteCodigo" onclick="agregarCodigoAFiltrosActuales()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          Filtrar consulta por este código
+        </button>
+        <button class="btn btn-ghost" onclick="cerrarModalCodigoActividad()" aria-label="Cerrar modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body" id="modalCodigoBody">
+      <div class="table-empty"><span class="spinner-sm"></span> Cargando actividad del código HIS...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal detallado: Desglose de citas y atenciones por fila -->
+<div class="modal-overlay" id="modalDetalleAtenciones" onclick="if(event.target===this)cerrarModalDetalleAtenciones()">
+  <div class="modal-box modal-xl">
+    <div class="modal-header">
+      <div>
+        <div class="modal-eyebrow">Desglose asistencial directo</div>
+        <h3 id="modalAtencionesTitle">Citas y atenciones registradas</h3>
+        <p class="modal-subtitle" id="modalAtencionesSubtitle">Cargando...</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" onclick="cerrarModalDetalleAtenciones()" aria-label="Cerrar modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- Pestañas internas del modal: 1. Citas Médicas / 2. Registros Clínicos HIS / 3. Resumen de Diagnósticos -->
+    <div class="modal-subtabs-nav" id="modalAtencionesSubtabs">
+      <button type="button" class="modal-subtab-btn active" id="modalTabBtnCitas" onclick="cambiarTabDetalleAtenciones('citas')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>1. Citas Médicas (Visitas)</span>
+        <span class="badge badge-subtab" id="modalBadgeCountCitas">0</span>
+      </button>
+      <button type="button" class="modal-subtab-btn" id="modalTabBtnRegistros" onclick="cambiarTabDetalleAtenciones('registros')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>2. Registros Clínicos HIS</span>
+        <span class="badge badge-subtab" id="modalBadgeCountRegistros">0</span>
+      </button>
+      <button type="button" class="modal-subtab-btn" id="modalTabBtnResumen" onclick="cambiarTabDetalleAtenciones('resumen')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        <span>3. Resumen Diagnóstico</span>
+        <span class="badge badge-subtab" id="modalBadgeCountDx">0</span>
+      </button>
+    </div>
+    <div class="modal-body" id="modalAtencionesBody">
+      <div class="table-empty"><span class="spinner-sm"></span> Consultando atenciones en producción...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Ficha Técnica Informativa de Catálogo (Establecimiento, CIE-10, CPMS, UPS, Laboratorio) -->
+<!-- JavaScript de la aplicación cargado desde frontend/js/app.js.
+     ═══════════════════════════════════════════ -->
+<script src="/js/exportar.js?v=20261022-prod-1" defer></script>
+<script src="/js/app.js?v=20261022-prod-1" defer></script>
+<script src="/js/nominal.js?v=20261022-prod-1" defer></script>
+<script src="/js/paciente-simple.js?v=20261022-prod-1" defer></script>
+<script src="/js/configuracion.js?v=20261022-prod-1" defer></script>
+<script src="/js/defunciones.js?v=20261022-prod-1" defer></script>
+<script src="/js/atencion-detalle.js?v=20261022-prod-1" defer></script>
+</body>
+</html>
