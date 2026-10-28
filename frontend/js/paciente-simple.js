@@ -2,14 +2,16 @@
 //  PACIENTES · BÚSQUEDA SIMPLE (pensada para médicos)
 // ═══════════════════════════════════════
 // Un solo buscador (DNI, nombre o historia clínica), la tarjeta del paciente y su historial en lenguaje sencillo.
-// Usa funciones globales de app.js: apiFetch, esc, formatNumber, formatearValor, toast, verAtencion, factGrid,
-// revisarSinadef, registrarExportAtenciones, botonesExportarHtml, SEXO, TIPOS_DX, currentUser.
+// Usa funciones globales de app.js: apiFetch, esc, formatNumber, formatearValor, toast, factGrid,
+// reporteMensualHtml, generarReporteMensual, revisarSinadef, registrarExportAtenciones, SEXO, currentUser;
+// y de historial.js: histPintar, histFiltrarTexto, histFechaIso, histFechaTexto, histIniciales.
 
 const PS = {
   iniciado: false,
   paciente: null,
   atenciones: [],
   periodo: 'todo',
+  texto: '',
   seq: 0,
   sugSeq: 0,
   sugTimer: null,
@@ -18,8 +20,8 @@ const PS = {
 
 const PS_RECIENTES_CLAVE = 'his_pac_recientes';
 const PS_MAX_RECIENTES = 6;
-const PS_MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
-const PS_DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const PS_LISTA_PASO = 20;   // pacientes por página en la lista de resultados
+const PS_LISTA_MAX = 100;   // igual a MAX_PACIENTES del backend
 const PS_PERIODOS = [
   ['mes', 'Último mes', 1],
   ['seis', 'Últimos 6 meses', 6],
@@ -27,18 +29,9 @@ const PS_PERIODOS = [
   ['todo', 'Todo el historial', null]
 ];
 
-const psFechaIso = v => (/^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : '');
-const psFechaTexto = v => { const f = psFechaIso(v); return f ? f.split('-').reverse().join('/') : ''; };
-
-function psIniciales(nombre) {
-  const partes = String(nombre || '').trim().split(/\s+/).filter(Boolean);
-  if (!partes.length) return '?';
-  return (partes[0][0] + (partes.length > 2 ? partes[2][0] : partes[1]?.[0] || '')).toUpperCase();
-}
-
 // Edad a partir de la fecha de nacimiento: años; en menores de un año, meses o días.
 function psEdad(fechaNacimiento) {
-  const f = psFechaIso(fechaNacimiento);
+  const f = histFechaIso(fechaNacimiento);
   if (!f) return '';
   const [y, m, d] = f.split('-').map(Number);
   const hoy = new Date();
@@ -52,6 +45,12 @@ function psEdad(fechaNacimiento) {
 }
 
 const psSexo = v => SEXO[String(v ?? '').trim()] || '';
+
+// Año y mes de la última atención (para proponerlo en el reporte mensual); sin atenciones, el mes actual.
+function psMesUltimaAtencion(p) {
+  const f = histFechaIso(p.UltimaAtencion);
+  return f ? { anio: Number(f.slice(0, 4)), mes: Number(f.slice(5, 7)) } : null;
+}
 
 // ── Pacientes recientes (solo en este navegador) ──
 function psLeerRecientes() {
@@ -79,6 +78,7 @@ function iniciarPacienteSimple() {
         <input id="psInput" type="search" placeholder="DNI, nombre o historia clínica del paciente" aria-label="DNI, nombre o historia clínica del paciente"
           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="psSug" enterkeyhint="search">
         <button type="submit" class="btn btn-primary ps-search-btn">Buscar</button>
+        <button type="button" class="btn btn-secondary ps-search-btn ps-limpiar-btn" data-ps-limpiar title="Borrar lo escrito y el resultado">Limpiar</button>
         <ul class="ps-sug" id="psSug" role="listbox" hidden></ul>
       </form>
     </div>
@@ -97,7 +97,7 @@ function psRenderRecientes() {
       <div class="ps-recientes-head"><h3>Pacientes que consultaste hace poco</h3><button type="button" class="ps-link" data-ps-borrar>Borrar lista</button></div>
       <div class="ps-recientes-grid">${lista.map(r => `
         <button type="button" class="ps-reciente" data-ps-abrir="${esc(r.id)}">
-          <span class="ps-mini-avatar" aria-hidden="true">${esc(psIniciales(r.nombre))}</span>
+          <span class="ps-mini-avatar" aria-hidden="true">${esc(histIniciales(r.nombre))}</span>
           <span class="ps-reciente-text"><strong>${esc(r.nombre || 'Paciente')}</strong><small>${esc([r.documento ? `DNI ${r.documento}` : '', r.edad, r.sexo].filter(Boolean).join(' · '))}</small></span>
         </button>`).join('')}</div>
     </section>`;
@@ -110,6 +110,14 @@ function psActivarBuscador() {
   const form = document.getElementById('psForm');
   const input = document.getElementById('psInput');
   const lista = document.getElementById('psSug');
+  form.querySelector('[data-ps-limpiar]').addEventListener('click', () => {
+    clearTimeout(PS.sugTimer);
+    PS.sugSeq += 1;
+    psCerrarSugerencias();
+    psCerrarPaciente();
+    if (location.hash !== '#pacientes') history.pushState(null, '', '#pacientes');
+    input.focus();
+  });
   form.addEventListener('submit', event => {
     event.preventDefault();
     const activo = lista.hidden ? null : lista.querySelector('li.activo');
@@ -153,8 +161,8 @@ function psCerrarSugerencias() {
 
 function psItemPaciente(p) {
   const datos = [p.Documento ? `DNI ${p.Documento}` : '', psEdad(p.FechaNacimiento), psSexo(p.Sexo), p.Historia_Clinica ? `H.C. ${p.Historia_Clinica}` : ''].filter(Boolean);
-  const ultima = psFechaTexto(p.UltimaAtencion);
-  return `<span class="ps-mini-avatar" aria-hidden="true">${esc(psIniciales(p.Paciente))}</span>
+  const ultima = histFechaTexto(p.UltimaAtencion);
+  return `<span class="ps-mini-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
     <span class="ps-item-text"><strong>${esc(p.Paciente || 'Sin nombre')}</strong><small>${esc(datos.join(' · '))}</small></span>
     <span class="ps-item-ultima">${ultima ? `Última atención<br><b>${esc(ultima)}</b>` : '<em>Sin atenciones</em>'}</span>`;
 }
@@ -187,7 +195,9 @@ function psElegir(i) {
 }
 
 // Busca con lo escrito: si hay un solo paciente lo abre; si hay varios, los muestra para elegir.
-async function buscarPacienteSimple(texto) {
+// «Ver más» repite la búsqueda con un límite mayor, sin borrar la lista mientras carga.
+async function buscarPacienteSimple(texto, { limite = PS_LISTA_PASO } = {}) {
+  const verMas = limite > PS_LISTA_PASO;
   iniciarPacienteSimple();
   cambiarTabPacientes('simple', { recordar: false });
   const valor = String(texto || '').trim();
@@ -203,10 +213,15 @@ async function buscarPacienteSimple(texto) {
   document.getElementById('pacPanelSimple')?.classList.remove('ps-con-paciente');
   psRenderRecientes();
   const res = document.getElementById('psResultado');
-  res.innerHTML = '<div class="ps-estado"><span class="ps-spinner" aria-hidden="true"></span>Buscando al paciente…</div>';
+  const botonMas = verMas ? res.querySelector('[data-ps-mas]') : null;
+  if (botonMas) { botonMas.disabled = true; botonMas.textContent = 'Cargando…'; }
+  else res.innerHTML = '<div class="ps-estado"><span class="ps-spinner" aria-hidden="true"></span>Buscando al paciente…</div>';
   try {
-    const filas = await apiFetch(`/busqueda/pacientes/sugerencias?q=${encodeURIComponent(valor)}`);
+    // Se pide uno más del límite para saber si quedan pacientes por mostrar.
+    const recibidas = await apiFetch(`/busqueda/pacientes/sugerencias?q=${encodeURIComponent(valor)}&limite=${limite + 1}`);
     if (seq !== PS.seq) return;
+    const hayMas = recibidas.length > limite;
+    const filas = recibidas.slice(0, limite);
     PS.sugerencias = filas;
     if (filas.length === 1) { abrirPacienteSimple(filas[0]); return; }
     if (!filas.length) {
@@ -214,12 +229,17 @@ async function buscarPacienteSimple(texto) {
         <ul><li>Revisa que el DNI tenga todos sus números.</li><li>Prueba solo con el apellido y el primer nombre.</li><li>Si tienes el número de historia clínica, búscalo con él.</li></ul></div>`;
       return;
     }
-    res.innerHTML = `<section class="ps-lista"><h3>Encontramos ${filas.length}${filas.length >= 8 ? ' o más' : ''} pacientes. Elige uno:</h3>
+    const puedeVerMas = hayMas && limite < PS_LISTA_MAX;
+    res.innerHTML = `<section class="ps-lista"><h3>${hayMas ? `Mostramos ${filas.length} de muchos pacientes` : `Encontramos ${filas.length} pacientes`}. Elige uno:</h3>
       <ul>${filas.map((p, i) => `<li><button type="button" class="ps-lista-item" data-ps-i="${i}">${psItemPaciente(p)}<span class="ps-chevron" aria-hidden="true">›</span></button></li>`).join('')}</ul>
-      ${filas.length >= 8 ? '<p class="ps-tip">Si no aparece, escribe también el segundo apellido o el nombre.</p>' : ''}</section>`;
+      ${puedeVerMas ? `<button type="button" class="btn btn-secondary ps-ver-mas" data-ps-mas>Ver ${PS_LISTA_PASO} más</button>` : ''}
+      ${hayMas ? `<p class="ps-tip">Si no aparece, escribe también el apellido${limite >= PS_LISTA_MAX ? ' o usa la Búsqueda avanzada' : ''}.</p>` : ''}</section>`;
     res.querySelectorAll('[data-ps-i]').forEach(b => b.addEventListener('click', () => abrirPacienteSimple(PS.sugerencias[Number(b.dataset.psI)])));
+    res.querySelector('[data-ps-mas]')?.addEventListener('click', () => buscarPacienteSimple(valor, { limite: Math.min(PS_LISTA_MAX, limite + PS_LISTA_PASO) }));
   } catch (error) {
-    if (seq === PS.seq) res.innerHTML = `<div class="ps-vacio"><h3>No se pudo buscar</h3><p>${esc(error.message || 'Intenta nuevamente.')}</p></div>`;
+    if (seq !== PS.seq) return;
+    if (botonMas?.isConnected) { botonMas.disabled = false; botonMas.textContent = `Ver ${PS_LISTA_PASO} más`; toast(error.message || 'No se pudieron cargar más pacientes.', 'error'); }
+    else res.innerHTML = `<div class="ps-vacio"><h3>No se pudo buscar</h3><p>${esc(error.message || 'Intenta nuevamente.')}</p></div>`;
   }
 }
 
@@ -237,12 +257,29 @@ async function abrirPacienteSimplePorId(id) {
   }
 }
 
+// Cierra la ficha y vuelve al buscador con los pacientes recientes.
+function psCerrarPaciente() {
+  PS.seq += 1;
+  PS.paciente = null;
+  document.getElementById('pacPanelSimple')?.classList.remove('ps-con-paciente');
+  const res = document.getElementById('psResultado');
+  if (res) res.innerHTML = '';
+  psRenderRecientes();
+  const input = document.getElementById('psInput');
+  if (input) input.value = '';
+}
+
 // ── Tarjeta e historial ──
 async function abrirPacienteSimple(p) {
   const seq = ++PS.seq;
+  // La ficha queda en la URL (#pacientes/Id_Paciente) para volver a ella al recargar.
+  const destino = `#pacientes/${encodeURIComponent(p.Id_Paciente ?? '')}`;
+  const enPacientes = document.getElementById('view-pacientes')?.classList.contains('active');
+  if (p.Id_Paciente != null && enPacientes && location.hash !== destino) history.pushState(null, '', destino);
   PS.paciente = p;
   PS.atenciones = [];
   PS.periodo = 'todo';
+  PS.texto = '';
   document.getElementById('pacPanelSimple')?.classList.add('ps-con-paciente');
   psGuardarReciente(p);
   psRenderRecientes();
@@ -251,12 +288,14 @@ async function abrirPacienteSimple(p) {
   const sexo = psSexo(p.Sexo);
   const dato = (titulo, valor) => `<div class="ps-dato"><dt>${titulo}</dt><dd>${valor ? esc(valor) : '<span class="ps-nd">No registrado</span>'}</dd></div>`;
   res.innerHTML = `
+    <div class="ps-ficha-grid">
+    <div class="ps-ficha-izq">
     <article class="ps-card">
       <div class="ps-card-top">
-        <span class="ps-avatar" aria-hidden="true">${esc(psIniciales(p.Paciente))}</span>
+        <span class="ps-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
         <div class="ps-card-id">
           <h2>${esc(p.Paciente || 'Paciente sin nombre')}</h2>
-          <div class="ps-tags">${edad ? `<span>${esc(edad)}</span>` : ''}${sexo ? `<span>${esc(sexo)}</span>` : ''}${p.FechaNacimiento ? `<span>Nació el ${esc(psFechaTexto(p.FechaNacimiento))}</span>` : ''}</div>
+          <div class="ps-tags">${edad ? `<span>${esc(edad)}</span>` : ''}${sexo ? `<span>${esc(sexo)}</span>` : ''}${p.FechaNacimiento ? `<span>Nació el ${esc(histFechaTexto(p.FechaNacimiento))}</span>` : ''}</div>
         </div>
         <div class="ps-card-actions">
           <button type="button" class="btn btn-secondary" data-ps-nuevo>
@@ -268,30 +307,48 @@ async function abrirPacienteSimple(p) {
         ${dato('DNI', p.Documento)}
         ${dato('Historia clínica', p.Historia_Clinica)}
         ${dato('Establecimiento', p.Establecimiento)}
-        ${dato('Última atención', psFechaTexto(p.UltimaAtencion))}
+        ${dato('Última atención', histFechaTexto(p.UltimaAtencion))}
         ${dato('Atenciones registradas', p.Atenciones ? formatNumber(p.Atenciones) : '0')}
       </dl>
       <details class="ps-mas" id="psMas"><summary>Ver todos los datos del paciente</summary><div class="ps-mas-body">Cargando…</div></details>
     </article>
+    <section class="ps-card ps-frecuentes" id="psFrecuentes" aria-label="Diagnósticos y procedimientos más frecuentes" hidden></section>
+    </div>
+    <aside class="ps-ficha-lado" aria-label="Reporte y resumen">
+      <div class="ps-card ps-reporte">${reporteMensualHtml(p, 'paciente', psMesUltimaAtencion(p))}</div>
+      <div id="psResumen"></div>
+    </aside>
+    </div>
+    <div class="ps-reporte-ancho" id="psReporteAncho"></div>
     <section class="ps-historial" aria-label="Historial de atenciones">
       <div class="ps-historial-head">
         <h3>Historial de atenciones</h3>
         <div class="ps-historial-acciones" id="psAccionesHistorial"></div>
       </div>
-      <div class="ps-periodos" role="group" aria-label="Periodo del historial" id="psPeriodos"></div>
+      <div class="ps-filtros">
+        <div class="ps-periodos" role="group" aria-label="Periodo del historial" id="psPeriodos"></div>
+        <label class="ps-buscar-hist">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" class="input" id="psBuscarHist" placeholder="Buscar diagnóstico, código, servicio o profesional" aria-label="Buscar en el historial">
+        </label>
+      </div>
       <div id="psTimeline"><div class="ps-estado"><span class="ps-spinner" aria-hidden="true"></span>Cargando el historial…</div></div>
     </section>`;
   res.querySelector('[data-ps-nuevo]').addEventListener('click', () => {
-    PS.paciente = null;
-    document.getElementById('pacPanelSimple')?.classList.remove('ps-con-paciente');
-    res.innerHTML = '';
-    psRenderRecientes();
-    const input = document.getElementById('psInput');
-    input.value = '';
-    input.focus();
+    psCerrarPaciente();
+    if (location.hash !== '#pacientes') history.pushState(null, '', '#pacientes');
+    document.getElementById('psInput').focus();
     document.getElementById('pacPanelSimple').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   res.querySelector('#psMas').addEventListener('toggle', event => { if (event.target.open) psCargarMasDatos(p); }, { once: true });
+  res.querySelector('#rmpGenerar').addEventListener('click', event => generarReporteMensual(event.currentTarget.dataset.id, 'paciente'));
+  // El reporte generado (tabla día por día) es ancho: se muestra debajo de las dos columnas.
+  res.querySelector('#psReporteAncho').append(res.querySelector('#rmpResultado'));
+  let buscarTimer = null;
+  res.querySelector('#psBuscarHist').addEventListener('input', event => {
+    clearTimeout(buscarTimer);
+    buscarTimer = setTimeout(() => { PS.texto = event.target.value.trim(); if (PS.atenciones.length) psRenderHistorial(); }, 200);
+  });
   res.scrollIntoView({ behavior: 'smooth', block: 'start' });
   revisarSinadef(p.Documento);
   try {
@@ -324,25 +381,29 @@ function psFiltrarPeriodo(clave) {
   const desde = new Date();
   desde.setMonth(desde.getMonth() - meses);
   const limite = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-${String(desde.getDate()).padStart(2, '0')}`;
-  return PS.atenciones.filter(r => psFechaIso(r.Fecha_Atencion) >= limite);
+  return PS.atenciones.filter(r => histFechaIso(r.Fecha_Atencion) >= limite);
 }
-
-const psContarCitas = filas => new Set(filas.map((r, i) => String(r.Id_Cita ?? `__${i}`))).size;
 
 function psRenderHistorial() {
   const p = PS.paciente;
+  const resumen = document.getElementById('psResumen');
+  const frecuentes = document.getElementById('psFrecuentes');
+  if (resumen) resumen.innerHTML = '';
+  if (frecuentes) frecuentes.hidden = true;
   const periodos = document.getElementById('psPeriodos');
   periodos.innerHTML = PS_PERIODOS.map(([clave, texto]) => {
-    const n = psContarCitas(psFiltrarPeriodo(clave));
+    const n = histContarCitas(psFiltrarPeriodo(clave));
     return `<button type="button" class="ps-periodo${PS.periodo === clave ? ' on' : ''}" data-periodo="${clave}" aria-pressed="${PS.periodo === clave}">${texto}<span>${formatNumber(n)}</span></button>`;
   }).join('');
   periodos.querySelectorAll('[data-periodo]').forEach(b => b.addEventListener('click', () => { PS.periodo = b.dataset.periodo; psRenderHistorial(); }));
 
-  const filas = psFiltrarPeriodo(PS.periodo);
+  const enPeriodo = psFiltrarPeriodo(PS.periodo);
+  const filas = histFiltrarTexto(enPeriodo, PS.texto);
   const periodoTexto = PS_PERIODOS.find(x => x[0] === PS.periodo)[1];
   registrarExportAtenciones('psHistorial', filas, 'Historial de atenciones del paciente', [
     ['Paciente', p.Paciente], ['DNI', p.Documento], ['Historia clínica', p.Historia_Clinica],
-    ['Edad', psEdad(p.FechaNacimiento)], ['Sexo', psSexo(p.Sexo)], ['Periodo', periodoTexto]
+    ['Edad', psEdad(p.FechaNacimiento)], ['Sexo', psSexo(p.Sexo)], ['Periodo', periodoTexto],
+    ...(PS.texto ? [['Búsqueda', PS.texto]] : [])
   ], 'historial-paciente');
   document.getElementById('psAccionesHistorial').innerHTML = filas.length
     ? `<button type="button" class="btn btn-primary ps-imprimir" data-export="psHistorial" data-formato="pdf">
@@ -353,71 +414,18 @@ function psRenderHistorial() {
 
   const timeline = document.getElementById('psTimeline');
   if (!PS.atenciones.length) { timeline.innerHTML = '<div class="ps-vacio"><h3>Este paciente no tiene atenciones registradas</h3></div>'; return; }
-  if (!filas.length) {
+  if (!enPeriodo.length) {
     timeline.innerHTML = `<div class="ps-vacio"><h3>No tiene atenciones en «${esc(periodoTexto.toLowerCase())}»</h3><button type="button" class="btn btn-secondary" data-periodo-todo>Ver todo el historial</button></div>`;
     timeline.querySelector('[data-periodo-todo]').addEventListener('click', () => { PS.periodo = 'todo'; psRenderHistorial(); });
     return;
   }
-  // Una entrada por atención (cita), de la más reciente a la más antigua.
-  const porCita = new Map();
-  filas.forEach((r, i) => {
-    const clave = r.Id_Cita ? String(r.Id_Cita) : `__${i}`;
-    if (!porCita.has(clave)) porCita.set(clave, []);
-    porCita.get(clave).push(r);
-  });
-  const entradas = [...porCita.values()].sort((a, b) => psFechaIso(b[0].Fecha_Atencion).localeCompare(psFechaIso(a[0].Fecha_Atencion)));
+  if (!filas.length) {
+    timeline.innerHTML = `<div class="ps-vacio"><h3>Ninguna atención coincide con «${esc(PS.texto)}»</h3><button type="button" class="btn btn-secondary" data-quitar-busqueda>Quitar búsqueda</button></div>`;
+    timeline.querySelector('[data-quitar-busqueda]').addEventListener('click', () => { PS.texto = ''; document.getElementById('psBuscarHist').value = ''; psRenderHistorial(); });
+    return;
+  }
   const limite = 1000;
-  timeline.innerHTML = `${PS.atenciones.length >= limite ? `<p class="ps-tip">Se muestran las ${formatNumber(limite)} anotaciones más recientes del paciente.</p>` : ''}
-    <ol class="ps-timeline">${entradas.map(psEntradaHtml).join('')}</ol>`;
-  timeline.querySelectorAll('[data-ps-ver]').forEach(b => b.addEventListener('click', () => {
-    const [ci, ri] = b.dataset.psVer.split(':').map(Number);
-    verAtencion(entradas[ci][ri]);
-  }));
+  const aviso = PS.atenciones.length >= limite ? `<p class="ps-tip">Se muestran las ${formatNumber(limite)} anotaciones más recientes del paciente.</p>` : '';
+  histPintar(timeline, filas, { contexto: 'paciente', establecimiento: p.Establecimiento, resumenEn: resumen, frecuentesEn: frecuentes }, aviso);
 }
 
-function psEntradaHtml(registros, indice) {
-  const r = registros[0];
-  const f = psFechaIso(r.Fecha_Atencion);
-  let fecha = '<span class="ps-ev-dia">?</span><span class="ps-ev-mes">Sin fecha</span>';
-  if (f) {
-    const [y, m, d] = f.split('-').map(Number);
-    fecha = `<span class="ps-ev-dia">${d}</span><span class="ps-ev-mes">${PS_MESES[m - 1]} ${y}</span><span class="ps-ev-semana">${PS_DIAS[new Date(y, m - 1, d).getDay()]}</span>`;
-  }
-  const items = registros.map(x => {
-    const codigo = String(x.Codigo_Item ?? '').trim();
-    const esProcedimiento = /^\d/.test(codigo);
-    const tipo = String(x.Tipo_Diagnostico ?? '').trim().toUpperCase();
-    const etiqueta = esProcedimiento ? ['Procedimiento', 'proc'] : TIPOS_DX[tipo] ? [TIPOS_DX[tipo], `dx-${tipo.toLowerCase()}`] : null;
-    const lab = String(x.Valor_Lab ?? '').trim();
-    return `<li>
-      ${etiqueta ? `<span class="ps-tag ps-tag-${etiqueta[1]}">${etiqueta[0]}</span>` : ''}
-      <span class="ps-item-desc">${esc(x.DescItem || 'Sin descripción')}</span>
-      <span class="ps-item-cod">${esc(codigo)}${lab ? ` · valor ${esc(lab)}` : ''}</span>
-    </li>`;
-  }).join('');
-  const medidas = [
-    r.Peso ? `Peso <b>${esc(r.Peso)} kg</b>` : '', r.Talla ? `Talla <b>${esc(r.Talla)} cm</b>` : '',
-    r.Hemoglobina ? `Hemoglobina <b>${esc(r.Hemoglobina)}</b>` : '', r.Perimetro_Abdominal ? `Perímetro abdominal <b>${esc(r.Perimetro_Abdominal)} cm</b>` : '',
-    r.Perimetro_Cefalico ? `Perímetro cefálico <b>${esc(r.Perimetro_Cefalico)} cm</b>` : ''
-  ].filter(Boolean);
-  const cita = r.Id_Cita;
-  return `<li class="ps-ev">
-    <div class="ps-ev-fecha">${fecha}</div>
-    <div class="ps-ev-card">
-      <div class="ps-ev-head">
-        <div>
-          <h4>${esc(r.Servicio || 'Atención')}</h4>
-          ${r.Personal ? `<p class="ps-ev-quien">Atendido por <strong>${esc(r.Personal)}</strong></p>` : ''}
-        </div>
-        <div class="ps-ev-acciones">
-          ${cita ? `<button type="button" class="btn btn-secondary btn-sm" data-export="cita" data-cita="${esc(cita)}" data-formato="pdf" title="Imprimir esta atención">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg> Imprimir</button>` : ''}
-          <button type="button" class="btn btn-secondary btn-sm" data-ps-ver="${indice}:0">Ver detalle</button>
-        </div>
-      </div>
-      <p class="ps-ev-sub">Diagnósticos y procedimientos</p>
-      <ul class="ps-items">${items}</ul>
-      ${medidas.length ? `<p class="ps-medidas">${medidas.join('<span aria-hidden="true">·</span>')}</p>` : ''}
-    </div>
-  </li>`;
-}

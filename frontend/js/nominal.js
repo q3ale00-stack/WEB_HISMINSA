@@ -4,7 +4,7 @@
 // Usa las funciones globales de app.js: apiFetch, esc, formatNumber, toast, verAtencion, dxBadgeHtml,
 // exportadores, exportarDocumento, botonesExportarHtml, buscarPacientes.
 
-// Una búsqueda avanzada por vista (Pacientes y Personal), cada una con sus propios filtros.
+// Una búsqueda avanzada por vista (Pacientes, Personal y Atenciones), cada una con sus propios filtros.
 const nuevoEstadoNominal = (tipo, appId) => ({
   tipo,
   appId,                // contenedor de la vista
@@ -23,7 +23,8 @@ const nuevoEstadoNominal = (tipo, appId) => ({
 });
 const NOM_INSTANCIAS = {
   pacientes: nuevoEstadoNominal('pacientes', 'nominalApp'),
-  personal: nuevoEstadoNominal('personal', 'nominalPersonalApp')
+  personal: nuevoEstadoNominal('personal', 'nominalPersonalApp'),
+  atenciones: nuevoEstadoNominal('atenciones', 'nominalAtencionesApp')
 };
 // Instancia en uso: la cambian las pestañas y cada evento de su panel.
 let NOM = NOM_INSTANCIAS.pacientes;
@@ -77,7 +78,14 @@ function cambiarTabPacientes(tab, { recordar = true } = {}) {
   else iniciarPacienteSimple();
 }
 
-function abrirVistaPacientes() {
+// id: paciente de la URL (#pacientes/123) al recargar o con Atrás/Adelante; '' si la URL no trae paciente.
+function abrirVistaPacientes({ id } = {}) {
+  if (id) {
+    if (String(PS.paciente?.Id_Paciente) === id) cambiarTabPacientes('simple', { recordar: false });
+    else abrirPacienteSimplePorId(id);
+    return;
+  }
+  if (id === '' && PS.paciente) psCerrarPaciente();
   let tab = 'simple';
   try { tab = localStorage.getItem('his_pac_tab') || 'simple'; } catch (_) { /* sin almacenamiento */ }
   cambiarTabPacientes(tab);
@@ -100,10 +108,46 @@ function cambiarTabPersonal(tab, { recordar = true } = {}) {
   if (tab === 'filtros') iniciarBusquedaNominal('personal');
 }
 
-function abrirVistaPersonal() {
+// id: profesional de la URL (#personal/123) al recargar o con Atrás/Adelante; '' si la URL no trae profesional.
+function abrirVistaPersonal({ id } = {}) {
+  if (id) {
+    cambiarTabPersonal('simple', { recordar: false });
+    if (String(personalFichaId) === id) return;
+    sv('qPersonal', id);
+    buscarPersonal({ modo: 'id' });
+    return;
+  }
+  if (id === '' && personalFichaId !== null) {
+    personalFichaId = null;
+    if (busquedaState.personal.length > 1) renderListaPersonal(busquedaState.personal);
+    else document.getElementById('resPersonal').innerHTML = '';
+  }
   let tab = 'simple';
   try { tab = localStorage.getItem('his_per_tab') || 'simple'; } catch (_) { /* sin almacenamiento */ }
   cambiarTabPersonal(tab);
+}
+
+// ── Pestañas de la vista Atenciones ──
+// «simple»: buscador por cita, paciente, personal o código. «filtros»: atenciones con todos los filtros del HIS.
+function cambiarTabAtenciones(tab, { recordar = true } = {}) {
+  if (tab !== 'filtros' || esRolMedico()) tab = 'simple';
+  const avanzada = document.getElementById('ateTabAvanzada');
+  if (avanzada) avanzada.hidden = esRolMedico();
+  document.querySelectorAll('[data-ate-tab]').forEach(b => {
+    const activa = b.dataset.ateTab === tab;
+    b.classList.toggle('active', activa);
+    b.setAttribute('aria-selected', String(activa));
+  });
+  document.getElementById('atePanelFiltros').hidden = tab !== 'filtros';
+  document.getElementById('atePanelSimple').hidden = tab !== 'simple';
+  if (recordar) { try { localStorage.setItem('his_ate_tab', tab); } catch (_) { /* sin almacenamiento */ } }
+  if (tab === 'filtros') iniciarBusquedaNominal('atenciones');
+}
+
+function abrirVistaAtenciones() {
+  let tab = 'simple';
+  try { tab = localStorage.getItem('his_ate_tab') || 'simple'; } catch (_) { /* sin almacenamiento */ }
+  cambiarTabAtenciones(tab);
 }
 
 // Desde la tabla avanzada: abre al paciente en la búsqueda simple (por su documento).
@@ -181,12 +225,12 @@ function htmlPanelNominal() {
       </div>
     </div>
 
-    <div class="nom-body nom-body-pac" id="${NOM.appId}-body" data-nom-parte="body">
-      ${NOM.tipo === 'personal' ? `
+    <div class="nom-body${NOM.tipo === 'atenciones' ? '' : ' nom-body-pac'}" id="${NOM.appId}-body" data-nom-parte="body">
+      ${NOM.tipo === 'atenciones' ? htmlColumnasAtenciones(o) : NOM.tipo === 'personal' ? `
       <section class="nom-col" aria-label="Personal">
         <h4 class="nom-col-title"><span>1</span> Personal</h4>
         <div class="nom-pac-grid">
-          ${nomTexto('personal', { placeholder: 'DNI o nombre' })}
+          ${nomTexto('personal', { placeholder: 'DNI, ID o nombre' })}
           ${nomSelect('profesion', (o.profesiones || []).map(pr => [pr.id, pr.nombre]))}
           ${nomSelect('ups', (o.ups || []).map(u => [u.id, u.nombre || u.id]), { todas: 'Todos' })}
           ${nomTexto('registrador', { placeholder: 'DNI o nombre' })}
@@ -214,6 +258,53 @@ function htmlPanelNominal() {
   </div>
   <div class="nom-activos" data-nom-parte="activos" aria-live="polite"></div>
   <div data-nom-parte="resultado" aria-live="polite"></div>`;
+}
+
+// Filtros de la vista Atenciones: la atención, el servicio, el paciente y el registro.
+function htmlColumnasAtenciones(o) {
+  const conTexto = (lista, nombres) => (lista || []).map(v => [v, nombres[v] || v]);
+  const mismos = lista => (lista || []).map(v => [v, v]);
+  return `
+      <section class="nom-col" aria-label="Atención">
+        <h4 class="nom-col-title"><span>1</span> Atención</h4>
+        ${nomTexto('codigo', { placeholder: 'Código o descripción' })}
+        ${nomTexto('cita')}
+        <div class="nom-row">
+          ${nomSelect('td', conTexto(o.tiposDiagnostico, NOM_TD), { todas: 'Todos' })}
+          ${nomSelect('lab', mismos(o.labs), { todas: 'Todos' })}
+        </div>
+      </section>
+      <section class="nom-col" aria-label="Servicio y personal">
+        <h4 class="nom-col-title"><span>2</span> Servicio y personal</h4>
+        ${nomSelect('ups', (o.ups || []).map(u => [u.id, u.nombre || u.id]), { todas: 'Todos' })}
+        <div class="nom-row">
+          ${nomSelect('turno', conTexto(o.turnos, NOM_TURNO), { todas: 'Todos' })}
+          ${nomSelect('sistema', (o.sistemas || []).map(s => [s.id, s.nombre || s.id]), { todas: 'Todos' })}
+        </div>
+        ${nomTexto('personal', { placeholder: 'DNI, ID o nombre' })}
+        ${nomSelect('profesion', (o.profesiones || []).map(pr => [pr.id, pr.nombre]))}
+      </section>
+      <section class="nom-col" aria-label="Paciente">
+        <h4 class="nom-col-title"><span>3</span> Paciente</h4>
+        ${nomTexto('paciente', { placeholder: 'DNI o nombre' })}
+        <div class="nom-row">
+          ${nomTexto('edad', { tipo: 'number', placeholder: 'Todas' })}
+          ${nomSelect('tipoEdad', conTexto(o.tiposEdad, NOM_TIPO_EDAD), { todas: 'Todos' })}
+        </div>
+        ${nomSelect('grupo', mismos(o.grupos), { todas: 'Todos' })}
+        ${nomSelect('gestante', mismos(o.gestante))}
+      </section>
+      <section class="nom-col" aria-label="Registro">
+        <h4 class="nom-col-title"><span>4</span> Registro</h4>
+        ${nomTexto('registrador', { placeholder: 'DNI o nombre' })}
+        ${nomSelect('difRegistro', NOM_DIF, { todas: 'Todos' })}
+        ${nomSelect('estado', NOM_ESTADO, { todas: 'Todos' })}
+        <div class="nom-row">
+          ${nomTexto('lote', { placeholder: 'Todos' })}
+          ${nomTexto('pag', { tipo: 'number', placeholder: 'Todas' })}
+        </div>
+        ${nomTexto('reg', { tipo: 'number', placeholder: 'Todos' })}
+      </section>`;
 }
 
 // ── Territorio en cascada: DISA → Red → MicroRed → Establecimiento ──
@@ -553,6 +644,8 @@ const NOM_COLUMNAS = [
   ['Estado', 'nowrap', r => (r.Fecha_Modificacion ? '<span class="nom-estado mod">Modificado</span>' : '<span class="nom-estado">Original</span>')]
 ];
 
+const nomPlural = (n, uno, varios) => `${formatNumber(n)} ${n === 1 ? uno : varios}`;
+
 function htmlResultadoNominal(datos) {
   const { filas, total, resumen, pagina, tam } = datos;
   if (!filas.length) return '<div class="table-empty">No hay registros con esos filtros. Prueba quitando alguno.</div>';
@@ -565,11 +658,13 @@ function htmlResultadoNominal(datos) {
     let separador = '';
     if (fecha !== fechaPrevia) {
       fechaPrevia = fecha;
-      const enDia = filas.filter(x => String(x.Fecha_Atencion || '').slice(0, 10) === fecha).length;
+      const delDia = filas.filter(x => String(x.Fecha_Atencion || '').slice(0, 10) === fecha);
+      const enDia = delDia.length;
+      const citasDia = new Set(delDia.map(x => String(x.Id_Cita ?? ''))).size;
       const [y, m, d] = fecha.split('-').map(Number);
       const nombreDia = y ? NOM_DIAS_SEMANA[new Date(y, m - 1, d).getDay()] : 'Sin fecha';
       const abierta = NOM.abiertas.has(fecha);
-      separador = `<tr class="nom-sep${abierta ? '' : ' plegada'}" data-sep="${esc(fecha)}"><td colspan="${NOM_COLUMNAS.length + 1}"><span class="nom-sep-in"><button type="button" class="nom-toggle" data-nom-toggle="${esc(fecha)}" aria-expanded="${abierta}" title="${abierta ? 'Contraer' : 'Expandir'} los registros de este día">${abierta ? '−' : '+'}</button><span class="nom-sep-fecha">${esc(nombreDia)} ${esc(nomFecha(fecha))}</span><small>${enDia} registro(s)</small></span></td></tr>`;
+      separador = `<tr class="nom-sep${abierta ? '' : ' plegada'}" data-sep="${esc(fecha)}"><td colspan="${NOM_COLUMNAS.length + 1}"><span class="nom-sep-in"><button type="button" class="nom-toggle" data-nom-toggle="${esc(fecha)}" aria-expanded="${abierta}" title="${abierta ? 'Contraer' : 'Expandir'} los registros de este día">${abierta ? '−' : '+'}</button><span class="nom-sep-fecha">${esc(nombreDia)} ${esc(nomFecha(fecha))}</span><small title="Cada diagnóstico o procedimiento de una atención es un registro HIS">${nomPlural(citasDia, 'atención', 'atenciones')} · ${nomPlural(enDia, 'registro', 'registros')}</small></span></td></tr>`;
     }
     return `${separador}<tr data-f="${esc(fecha)}"${NOM.abiertas.has(fecha) ? '' : ' hidden'}>${NOM_COLUMNAS.map(([, clase, celda]) => `<td class="${clase}">${celda(r)}</td>`).join('')}<td class="nom-c-acc"><button type="button" class="btn btn-secondary btn-xs" data-nom-ver="${i}">Ver</button></td></tr>`;
   }).join('');
@@ -577,7 +672,7 @@ function htmlResultadoNominal(datos) {
   return `
     <div class="nom-tree-bar">
       <span class="nom-tree-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span>
-      <span class="nom-tree-text"><strong>Registros agrupados por fecha de atención</strong><small>Usa <b>+</b> y <b>−</b> en cada día para expandir o contraer sus registros</small></span>
+      <span class="nom-tree-text"><strong>Registros agrupados por fecha de atención</strong>${resumen?.atenciones !== undefined ? `<small class="nom-tree-total" title="Cada diagnóstico o procedimiento de una atención es un registro HIS"><b>${nomPlural(resumen.atenciones, 'atención', 'atenciones')}</b> (citas) · ${nomPlural(total, 'registro HIS', 'registros HIS')}</small>` : ''}</span>
       <button type="button" class="nom-tree-btn" data-nom-arbol="expandir"><b>+</b> Expandir todo</button>
       <button type="button" class="nom-tree-btn" data-nom-arbol="contraer"><b>−</b> Contraer todo</button>
     </div>
@@ -622,6 +717,7 @@ exportadores.nominal = async (formato, boton) => {
   const filtros = filtrosActivosNominal().map(([, etiqueta, valor]) => [etiqueta, valor]);
   const total = st.datos?.total;
   const dePersonal = st.tipo === 'personal';
+  const deAtenciones = st.tipo === 'atenciones';
   if (![...params.keys()].length) { toast('Elige al menos un filtro antes de exportar.', 'info'); return; }
   params.set('exportar', '1');
   const texto = boton.innerHTML;
@@ -640,9 +736,9 @@ exportadores.nominal = async (formato, boton) => {
   if (!datos.filas.length) { toast('No hay registros para exportar con esos filtros.', 'info'); return; }
   const recortado = datos.filas.length >= (datos.limiteExportar || 5000);
   exportarDocumento(formato, {
-    titulo: dePersonal ? 'Atenciones HIS por personal' : 'Búsqueda nominal de atenciones HIS',
+    titulo: dePersonal ? 'Atenciones HIS por personal' : deAtenciones ? 'Búsqueda avanzada de atenciones HIS' : 'Búsqueda nominal de atenciones HIS',
     datos: [...filtros, ['Registros exportados', formatNumber(datos.filas.length) + (total ? ` de ${formatNumber(total)}` : '')]],
-    archivo: dePersonal ? 'busqueda-personal-his' : 'busqueda-nominal-his',
+    archivo: dePersonal ? 'busqueda-personal-his' : deAtenciones ? 'busqueda-atenciones-his' : 'busqueda-nominal-his',
     orientacion: 'landscape',
     notas: recortado ? ['Se exportan los primeros 5 000 registros; acota los filtros para obtener el resto.'] : undefined,
     secciones: [formato === 'pdf' ? {

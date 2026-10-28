@@ -122,7 +122,7 @@ npm.cmd start
 npm.cmd run dev
 ```
 
-El comando `npm start` ejecuta `backend/server.js`; `npm run dev` utiliza el modo de observación de Node.js. Los archivos `server.js` y `check_schema.js` de la raíz se mantienen como puntos de entrada de compatibilidad para comandos anteriores.
+El comando `npm start` ejecuta `backend/server.js`; `npm run dev` utiliza el modo de observación de Node.js.
 
 ## API HTTP
 
@@ -186,7 +186,7 @@ Variables opcionales en `.env`: `IMPORT_TMP_DIR` (carpeta temporal; por defecto 
 
 1. Abre `http://localhost:3000/api/health`. Una respuesta HTTP 200 confirma que Express está activo.
 2. Si la interfaz informa que no puede consultar la base, comprueba que SQL Server esté disponible y revisa `DB_SERVER`, `DB_DATABASE`, el puerto y las credenciales locales.
-3. Para revisar los nombres de tablas y columnas visibles en la conexión configurada, ejecuta `node backend/check_schema.js` (también está disponible `node check_schema.js` desde la raíz).
+3. Para revisar los nombres de tablas y columnas visibles en la conexión configurada, ejecuta `node backend/check_schema.js`.
 4. Los errores de conexión transitorios en lecturas se reintentan de forma limitada. Si el servicio de base de datos sigue sin estar disponible, la API devuelve un error recuperable y registra el detalle en la consola del servidor.
 5. Si el frontend y la API se alojan en direcciones diferentes, actualiza la URL base en la vista **Configuración** y restringe CORS a los orígenes que correspondan.
 

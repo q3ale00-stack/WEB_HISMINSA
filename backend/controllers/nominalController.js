@@ -254,12 +254,13 @@ async function buscar(req, res) {
     let resumen = null;
     if (!exportar) {
       const conteo = await withTransientRetry(() => conParams(pool.request(), filtros.params).query(`
-        SELECT COUNT_BIG(*) AS registros
+        SELECT COUNT_BIG(*) AS registros, COUNT(DISTINCT n.Id_Cita) AS atenciones
         FROM NProduccion n
         ${filtros.where}`));
       const fila = conteo.recordset[0] || {};
       total = Number(fila.registros || 0);
-      resumen = { registros: total };
+      // Una atención (cita) tiene un registro por cada diagnóstico o procedimiento: la ficha del paciente cuenta atenciones.
+      resumen = { registros: total, atenciones: Number(fila.atenciones || 0) };
     }
     res.status(200).json({ pagina, tam, total, resumen, filtros: filtros.aplicados, filas: filas.recordset, limiteExportar: exportar ? MAX_EXPORTAR : undefined });
   } catch (error) {
@@ -364,7 +365,7 @@ async function sugerencias(req, res) {
       case 'personal':
         consulta = `SELECT TOP (15) per.Id_Personal AS id, per.Numero_Documento_Personal AS documento, ${NOMBRE_PERSONAL} AS nombre, prof.Descripcion_Profesion AS detalle
           FROM MaestroPersonal per OUTER APPLY (SELECT TOP (1) pr.Descripcion_Profesion FROM MAESTRO_HIS_PROFESION pr WHERE pr.Id_Profesion = per.Id_Profesion) prof
-          WHERE per.Numero_Documento_Personal LIKE @inicio OR (${porNombre('per', 'Personal')}) ORDER BY nombre`;
+          WHERE per.Numero_Documento_Personal LIKE @inicio OR CONVERT(nvarchar(50), per.Id_Personal) LIKE @inicio OR (${porNombre('per', 'Personal')}) ORDER BY nombre`;
         break;
       case 'registrador':
         consulta = `SELECT TOP (15) reg.Id_Registrador AS id, ${esq.docRegistrador ? `reg.${q(esq.docRegistrador)}` : 'reg.Id_Registrador'} AS documento, ${NOMBRE_REGISTRADOR} AS nombre

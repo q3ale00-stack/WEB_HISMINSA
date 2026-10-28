@@ -77,7 +77,7 @@ const getReportes = async (req, res) => {
       '(@fechaInicio IS NULL OR np.Fecha_Atencion >= @fechaInicio)',
       '(@fechaFin IS NULL OR np.Fecha_Atencion < DATEADD(DAY, 1, @fechaFin))',
       '(@anio IS NULL OR np.Anio = @anio)',
-      '(@mes IS NULL OR np.Mes = @mes)',
+      '(@mes IS NULL OR np.Mes = @mes OR TRY_CAST(np.Mes AS int) = TRY_CAST(@mes AS int))',
       matchedCodesStr
         ? '(@codigoItem IS NULL OR np.Codigo_Item = @codigoItem OR np.Codigo_Item IN (SELECT value FROM STRING_SPLIT(@matchedCodes, \'|\')))'
         : '(@codigoItem IS NULL OR np.Codigo_Item = @codigoItem)',
@@ -90,7 +90,7 @@ const getReportes = async (req, res) => {
 
     // Si se especifica un mes puntual, agrupamos la tendencia por DÍA; de lo contrario, por MES
     const temporalGroupBySql = mes
-      ? `SELECT TOP 31
+      ? `SELECT
            CONVERT(varchar(10), np.Fecha_Atencion, 120) as periodo,
            COUNT_BIG(*) as registros,
            COUNT(DISTINCT np.Id_Cita) as atenciones,
@@ -351,7 +351,230 @@ const getFiltrosProduccion = async (req, res) => {
   }
 };
 
+
+// Devuelve el desglose nominal de citas médicas atendidas en una fecha específica (clic en día en gráfico de producción)
+const getCitasDia = async (req, res) => {
+  try {
+    const fecha = parseReportDate(req.query.fecha, 'fecha');
+    if (!fecha) {
+      return res.status(400).json({ message: 'Debe especificar una fecha válida (AAAA-MM-DD).' });
+    }
+
+    const idEstablecimiento = req.query.idEstablecimiento ? String(req.query.idEstablecimiento).trim() : null;
+    const idUps = req.query.idUps ? String(req.query.idUps).trim() : null;
+    const codigoItem = req.query.codigoItem ? String(req.query.codigoItem).trim() : null;
+    const idPersonal = req.query.idPersonal ? String(req.query.idPersonal).trim() : null;
+    const tipoDiagnostico = req.query.tipoDiagnostico ? String(req.query.tipoDiagnostico).trim() : null;
+
+    const cacheKey = `citas_dia_${fecha}_${idEstablecimiento}_${idUps}_${codigoItem}_${idPersonal}_${tipoDiagnostico}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
+    const pool = await poolPromise;
+
+    let matchedCodesStr = null;
+    if (codigoItem) {
+      try {
+        const codeRes = await pool.request()
+          .input('cItem', sql.NVarChar(120), codigoItem)
+          .input('cItemLike', sql.NVarChar(120), `%${codigoItem}%`)
+          .query(`
+            SELECT TOP 200 Codigo_Item 
+            FROM MAESTRO_HIS_CIE_CPMS 
+            WHERE Codigo_Item = @cItem 
+               OR Codigo_Item LIKE @cItemLike 
+               OR Descripcion_Item LIKE @cItemLike
+          `);
+        const codes = (codeRes.recordset || []).map(r => r.Codigo_Item).filter(Boolean);
+        if (codes.length > 0) {
+          matchedCodesStr = codes.join('|');
+        }
+      } catch (e) {
+        console.warn('Advertencia buscando códigos coincidentes:', e.message);
+      }
+    }
+
+    const whereConditions = [
+      'np.Fecha_Atencion = @fecha',
+      '(@idEstablecimiento IS NULL OR np.Id_Establecimiento = @idEstablecimiento)',
+      '(@idUps IS NULL OR np.Id_Ups = @idUps)',
+      '(@idPersonal IS NULL OR np.Id_Personal = @idPersonal)',
+      '(@tipoDiagnostico IS NULL OR np.Tipo_Diagnostico = @tipoDiagnostico)',
+      matchedCodesStr
+        ? '(@codigoItem IS NULL OR np.Codigo_Item = @codigoItem OR np.Codigo_Item IN (SELECT value FROM STRING_SPLIT(@matchedCodes, \'|\')))'
+        : '(@codigoItem IS NULL OR np.Codigo_Item = @codigoItem)'
+    ];
+
+    const whereSql = whereConditions.join(' AND ');
+
+    const query = `
+      SELECT
+        np.Id_Cita,
+        np.Fecha_Atencion,
+        np.Id_Turno,
+        np.Id_Paciente,
+        np.Edad_Reg,
+        np.Tipo_Edad,
+        np.Id_Personal,
+        np.Id_Establecimiento,
+        np.Id_Ups,
+        np.Id_Financiador,
+        np.Codigo_Item,
+        np.Tipo_Diagnostico,
+        np.Valor_Lab,
+        np.Peso,
+        np.Talla,
+        np.Hemoglobina,
+        pac.Numero_Documento_Paciente as Documento_Paciente,
+        pac.Apellido_Paterno_Paciente,
+        pac.Apellido_Materno_Paciente,
+        pac.Nombres_Paciente,
+        pac.Historia_Clinica,
+        pac.Id_Genero as Genero,
+        per.Numero_Documento_Personal as Documento_Personal,
+        per.Apellido_Paterno_Personal,
+        per.Apellido_Materno_Personal,
+        per.Nombres_Personal,
+        prof.Descripcion_Profesion as Profesion,
+        est.Nombre_Establecimiento as Establecimiento,
+        ups.Descripcion_Ups as Servicio,
+        fin.Descripcion_Financiador as Financiador,
+        cie.Descripcion_Item as Descripcion_Item,
+        cie.Fg_Tipo as Fg_Tipo
+      FROM NProduccion np
+      LEFT JOIN MaestroPaciente pac ON np.Id_Paciente = pac.Id_Paciente
+      LEFT JOIN MaestroPersonal per ON np.Id_Personal = per.Id_Personal
+      LEFT JOIN MAESTRO_HIS_PROFESION prof ON per.Id_Profesion = prof.Id_Profesion
+      LEFT JOIN MAESTRO_HIS_ESTABLECIMIENTO est ON np.Id_Establecimiento = est.Id_Establecimiento
+      LEFT JOIN MAESTRO_HIS_UPS ups ON np.Id_Ups = ups.Id_Ups
+      LEFT JOIN MAESTRO_HIS_FINANCIADOR fin ON np.Id_Financiador = fin.Id_Financiador
+      OUTER APPLY (
+        SELECT TOP 1 c.Descripcion_Item, c.Fg_Tipo
+        FROM MAESTRO_HIS_CIE_CPMS c
+        WHERE c.Codigo_Item = np.Codigo_Item
+      ) cie
+      WHERE ${whereSql}
+      ORDER BY np.Id_Cita ASC, np.Id_Correlativo_Item ASC;
+    `;
+
+    const request = pool.request();
+    request.input('fecha', sql.Date, fecha);
+    request.input('idEstablecimiento', sql.NVarChar, idEstablecimiento || null);
+    request.input('idUps', sql.NVarChar, idUps || null);
+    request.input('idPersonal', sql.NVarChar, idPersonal || null);
+    request.input('tipoDiagnostico', sql.NVarChar, tipoDiagnostico || null);
+    request.input('codigoItem', sql.NVarChar, codigoItem || null);
+    if (matchedCodesStr) {
+      request.input('matchedCodes', sql.NVarChar(sql.MAX), matchedCodesStr);
+    }
+
+    const result = await withTransientRetry(() => request.query(query));
+    const rows = result.recordset || [];
+
+    const citasMap = new Map();
+    const pacientesSet = new Set();
+    const personalSet = new Set();
+    const codigosSet = new Set();
+    const serviciosMap = new Map();
+    const establecimientosMap = new Map();
+
+    rows.forEach(r => {
+      const citaKey = r.Id_Cita ? String(r.Id_Cita) : `${r.Id_Paciente}_${r.Id_Personal}_${r.Fecha_Atencion}`;
+      
+      if (r.Id_Paciente) pacientesSet.add(r.Id_Paciente);
+      if (r.Id_Personal) personalSet.add(r.Id_Personal);
+      if (r.Codigo_Item) codigosSet.add(r.Codigo_Item);
+
+      if (r.Id_Ups && r.Servicio) {
+        serviciosMap.set(String(r.Id_Ups), r.Servicio);
+      }
+      if (r.Id_Establecimiento && r.Establecimiento) {
+        establecimientosMap.set(String(r.Id_Establecimiento), r.Establecimiento);
+      }
+
+      if (!citasMap.has(citaKey)) {
+        const nombrePaciente = [r.Apellido_Paterno_Paciente, r.Apellido_Materno_Paciente, r.Nombres_Paciente]
+          .filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(' ') || 'Sin nombre registrado';
+        const nombrePersonal = [r.Apellido_Paterno_Personal, r.Apellido_Materno_Personal, r.Nombres_Personal]
+          .filter(Boolean).map(s => String(s).trim()).filter(Boolean).join(' ') || 'No registrado';
+
+        let fechaStr = fecha;
+        if (r.Fecha_Atencion) {
+          try {
+            fechaStr = r.Fecha_Atencion.toISOString().slice(0, 10);
+          } catch (_) {
+            fechaStr = String(r.Fecha_Atencion).slice(0, 10);
+          }
+        }
+
+        citasMap.set(citaKey, {
+          idCita: r.Id_Cita,
+          fecha: fechaStr,
+          turno: r.Id_Turno,
+          idPaciente: r.Id_Paciente,
+          documentoPaciente: r.Documento_Paciente,
+          nombrePaciente,
+          historiaClinica: r.Historia_Clinica,
+          genero: r.Genero,
+          edad: r.Edad_Reg,
+          tipoEdad: r.Tipo_Edad,
+          idPersonal: r.Id_Personal,
+          documentoPersonal: r.Documento_Personal,
+          nombrePersonal,
+          profesion: r.Profesion || 'Profesional de salud',
+          idEstablecimiento: r.Id_Establecimiento,
+          establecimiento: r.Establecimiento || 'Hospital Regional de Ayacucho',
+          idUps: r.Id_Ups,
+          servicio: r.Servicio || 'Consulta Externa',
+          financiador: r.Financiador || 'No especificado',
+          peso: r.Peso,
+          talla: r.Talla,
+          hemoglobina: r.Hemoglobina,
+          items: []
+        });
+      }
+
+      const cita = citasMap.get(citaKey);
+      const td = (r.Tipo_Diagnostico || '').toUpperCase().trim();
+      const tipoLabel = td === 'D' ? 'Definitivo' : td === 'P' ? 'Presuntivo' : td === 'R' ? 'Repetido' : (td || '-');
+
+      cita.items.push({
+        codigo: r.Codigo_Item,
+        descripcion: r.Descripcion_Item || r.Codigo_Item || 'Sin descripción',
+        tipoDiagnostico: r.Tipo_Diagnostico,
+        tipoLabel,
+        fgTipo: r.Fg_Tipo,
+        valorLab: r.Valor_Lab
+      });
+    });
+
+    const citasList = Array.from(citasMap.values());
+
+    const payload = {
+      fecha,
+      totalCitas: citasList.length,
+      totalRegistros: rows.length,
+      totalPacientes: pacientesSet.size,
+      totalPersonal: personalSet.size,
+      totalCodigos: codigosSet.size,
+      servicios: Array.from(serviciosMap.entries()).map(([id, nombre]) => ({ id, nombre })),
+      establecimientos: Array.from(establecimientosMap.entries()).map(([id, nombre]) => ({ id, nombre })),
+      citas: citasList
+    };
+
+    cache.set(cacheKey, payload, 180); // 3 minutos en caché
+    res.status(200).json(payload);
+  } catch (error) {
+    if (error.code === 'INVALID_REPORT_DATE') {
+      return res.status(400).json({ message: error.message, code: 'INVALID_REPORT_DATE' });
+    }
+    console.error('Error in getCitasDia:', error);
+    res.status(500).json({ message: 'No se pudieron consultar las citas del día.', error: error.message });
+  }
+};
+
 module.exports = {
   getReportes,
-  getFiltrosProduccion
+  getFiltrosProduccion,
+  getCitasDia
 };

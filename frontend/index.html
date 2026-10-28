@@ -9,8 +9,8 @@
 <!-- Recursos tipográficos y hoja de estilos global de la interfaz. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/app.css?v=20261022-prod-1">
-<link rel="stylesheet" href="/css/tema-oscuro.css?v=20261022-prod-1">
+<link rel="stylesheet" href="/css/app.css?v=20261028-citas-1">
+<link rel="stylesheet" href="/css/tema-oscuro.css?v=20261028-ficha-1">
 <script>
   // Aplica el aspecto elegido (claro, oscuro o automático) antes de dibujar la página.
   (function () {
@@ -193,21 +193,32 @@
     </div>
     <div class="hh-side" aria-label="Cifras generales">
       <div class="hh-glass hh-main">
-        <span class="hh-label" id="homeMesLabel">Citas atendidas en el último mes</span>
-        <strong class="hh-value" id="homeMes">—</strong>
-        <span class="hh-trend" id="homeMesTrend"></span>
-        <svg class="hh-spark" id="homeSpark" viewBox="0 0 220 56" preserveAspectRatio="none" aria-hidden="true"></svg>
-        <span class="hh-foot">Última atención registrada: <b id="homeUltima">—</b></span>
+        <div class="hh-main-head">
+          <span class="hh-label" id="homeMesLabel">Citas atendidas en el último mes</span>
+          <span class="hh-trend" id="homeMesTrend"></span>
+        </div>
+        <strong class="hh-value"><span id="homeMes">—</span><small>citas</small></strong>
+        <div class="hh-spark" id="homeSpark"></div>
+        <span class="hh-foot" id="homeFootWrap">Última atención registrada: <b id="homeUltima">—</b></span>
+        <div class="hh-main-actions" id="homeMainActions">
+          <button type="button" class="hh-action-btn" id="homeBtnVerProduccion">
+            <span>Ver producción del mes</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" class="hh-action-reset" id="homeBtnResetMes" title="Volver al último mes registrado" hidden>
+            ↺ Último mes
+          </button>
+        </div>
       </div>
       <div class="hh-mini-row">
-        <div class="hh-glass hh-mini">
+        <a class="hh-glass hh-mini" id="homeCardPacientes" href="#pacientes" data-go="pacientes" title="Ir a la sección de pacientes">
           <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg></span>
           <strong id="homePacientes">—</strong><span>pacientes en el padrón</span>
-        </div>
-        <div class="hh-glass hh-mini">
+        </a>
+        <a class="hh-glass hh-mini" id="homeCardAtenciones" href="#atenciones" data-go="atenciones" title="Ir a la sección de atenciones">
           <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
           <strong id="homeAtenciones">—</strong><span>citas atendidas registradas</span>
-        </div>
+        </a>
       </div>
     </div>
   </div>
@@ -215,7 +226,10 @@
   <div class="home-grid">
     <section class="card home-chart-card" aria-labelledby="homeChartTitle">
       <div class="card-header">
-        <div><div class="card-title" id="homeChartTitle">Citas atendidas por mes</div><div class="card-subtitle" id="homeChartNote">Últimos meses con registros en NProduccion</div></div>
+        <div><div class="card-title" id="homeChartTitle">Citas atendidas por mes</div><div class="card-subtitle" id="homeChartNote">Últimos meses con registros en NProduccion · Haz clic en una barra para seleccionarla</div></div>
+        <div class="actions">
+          <span class="home-chart-badge" id="homeChartBadge" style="display:none;"></span>
+        </div>
       </div>
       <div class="home-chart" id="homeChart"><div class="table-empty">Cargando…</div></div>
     </section>
@@ -260,16 +274,23 @@
 
 <!-- Vista: búsqueda de atenciones (NProduccion) por cita, paciente, personal, código y fechas. -->
 <section id="view-atenciones" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar atenciones">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-ate-tab="simple" onclick="cambiarTabAtenciones('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar atención
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-ate-tab="filtros" id="ateTabAvanzada" onclick="cambiarTabAtenciones('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="atePanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="nominalAtencionesApp" class="nominal-app"></div>
+  </div>
+  <div id="atePanelSimple" class="pac-panel" role="tabpanel">
   <div class="card search-card">
-    <form class="search-bar search-bar-mode" id="formAtenciones" role="search">
+    <form class="search-bar" id="formAtenciones" role="search">
       <input class="input" id="qAtenciones" type="search" placeholder="Cita, ID de paciente, ID de personal o código HIS" autocomplete="off" aria-label="Buscar atención">
-      <select class="input" id="modoAtenciones" aria-label="Buscar en">
-        <option value="todos">Todos los datos</option>
-        <option value="cita">Código de cita</option>
-        <option value="paciente">ID de paciente</option>
-        <option value="personal">ID de personal</option>
-        <option value="codigo">Código CIE / CPMS</option>
-      </select>
       <div class="search-buttons">
         <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
         <button class="btn btn-secondary" type="reset">Limpiar</button>
@@ -282,37 +303,51 @@
     <p class="search-hint">Escribe un dato, elige un rango de fechas o ambos. Se muestran las 200 atenciones más recientes.</p>
   </div>
   <div id="resAtenciones" aria-live="polite"></div>
+  </div>
 </section>
 
 <!-- Vista: búsqueda de defunciones (V_SINADEF_AYACUCHO_DOMFALLECIDO). -->
 <section id="view-defunciones" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar defunciones">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-def-tab="simple" onclick="cambiarTabDefunciones('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar defunción
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-def-tab="filtros" id="defTabAvanzada" onclick="cambiarTabDefunciones('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="defPanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="defAvanzadaApp" class="nominal-app"></div>
+  </div>
+  <div id="defPanelSimple" class="pac-panel" role="tabpanel">
   <div class="def-hero">
     <div class="def-hero-text">
-      <h3>Buscar en el SINADEF de Ayacucho</h3>
-      <p>Escribe un <strong>DNI</strong>, <strong>certificado</strong> o <strong>nombre</strong>, o consulta las defunciones de un periodo.</p>
+      <h3>¿A quién buscas?</h3>
+      <p>Encuentra a una persona fallecida en Ayacucho y consulta su certificado de defunción.</p>
+      <ul class="def-ayuda" aria-label="Qué puedes escribir">
+        <li><b>DNI</b> <span>8 números, ej. 28586440</span></li>
+        <li><b>Nombre</b> <span>nombre y apellido en cualquier orden, ej. andres bermudo</span></li>
+        <li><b>N.º de certificado</b> <span>ej. 2000389562</span></li>
+      </ul>
     </div>
     <form class="def-search" id="formDefunciones" role="search" autocomplete="off">
       <div class="def-search-box">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="qDefunciones" type="search" placeholder="Ej.: 28228899 · Cisneros Tineo · 2001317721" aria-label="Buscar defunción">
-        <select class="input" id="modoDefunciones" aria-label="Buscar en">
-          <option value="todos">Todos los datos</option>
-          <option value="documento">Documento</option>
-          <option value="n">N</option>
-          <option value="cdef">Certificado</option>
-          <option value="nombre">Nombre</option>
-        </select>
+        <input id="qDefunciones" type="search" placeholder="Escribe un DNI, un nombre o un n.º de certificado" aria-label="DNI, nombre o número de certificado de la persona fallecida">
         <button class="btn btn-primary" type="submit">Buscar</button>
+        <button class="btn btn-secondary" type="reset" title="Borrar lo escrito, las fechas y el resultado">Limpiar</button>
       </div>
       <div class="def-search-extra">
         <div class="def-periodos" role="group" aria-label="Periodos rápidos">
-          <span>Ver defunciones de:</span>
+          <span>¿No buscas a alguien en concreto? Mira las defunciones de:</span>
           <button type="button" class="def-periodo" data-def-periodo="7">Últimos 7 días</button>
           <button type="button" class="def-periodo" data-def-periodo="30">Último mes</button>
           <button type="button" class="def-periodo" data-def-periodo="90">Últimos 3 meses</button>
         </div>
         <details class="def-rango" id="defRango">
-          <summary>Rango de fechas</summary>
+          <summary>Elegir fechas</summary>
           <div class="def-rango-campos">
             <label class="label" for="desdeDefunciones">Desde<input class="input" id="desdeDefunciones" type="date"></label>
             <label class="label" for="hastaDefunciones">Hasta<input class="input" id="hastaDefunciones" type="date"></label>
@@ -322,7 +357,17 @@
       </div>
     </form>
   </div>
-  <div id="resDefunciones" aria-live="polite"></div>
+  <div id="resDefunciones" aria-live="polite">
+    <div class="def-inicio">
+      <h3>Cómo buscar</h3>
+      <ol>
+        <li><span>1</span><div><strong>Escribe lo que sepas de la persona</strong><small>Basta con el DNI o con un nombre y un apellido. No importan mayúsculas ni tildes.</small></div></li>
+        <li><span>2</span><div><strong>Pulsa «Buscar» o la tecla Enter</strong><small>Verás a las personas que coinciden, de la más reciente a la más antigua.</small></div></li>
+        <li><span>3</span><div><strong>Abre su certificado</strong><small>Con «Ver certificado» verás la fecha, el lugar y las causas de la muerte.</small></div></li>
+      </ol>
+    </div>
+  </div>
+  </div>
 </section>
 
 <!-- Vista: búsqueda de personal (MaestroPersonal) con su ficha y atenciones. -->
@@ -341,15 +386,13 @@
     <div id="nominalPersonalApp" class="nominal-app"></div>
   </div>
   <div id="perPanelSimple" class="pac-panel" role="tabpanel">
-  <div class="card search-card">
-    <form class="search-bar search-bar-mode" id="formPersonal" role="search">
+  <div class="card search-card pf-buscador">
+    <div class="pf-buscador-titulo">
+      <h3>Personal de salud</h3>
+      <p>Encuentra a un profesional para ver su ficha, las atenciones que registró y su reporte mensual de producción.</p>
+    </div>
+    <form class="search-bar" id="formPersonal" role="search">
       <input class="input" id="qPersonal" type="search" placeholder="ID de personal, DNI, apellido o nombre" autocomplete="off" aria-label="Buscar personal">
-      <select class="input" id="modoPersonal" aria-label="Buscar en">
-        <option value="todo">Todos los datos</option>
-        <option value="id">ID de personal</option>
-        <option value="documento">Documento</option>
-        <option value="nombre">Nombre</option>
-      </select>
       <div class="search-buttons">
         <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar personal</button>
         <button class="btn btn-secondary" type="reset">Limpiar</button>
@@ -1292,6 +1335,102 @@
               </div>
 
             </div>
+
+            <!-- APARTADO NOMINAL DE CITAS DEL DÍA SELECCIONADO -->
+            <section class="prod-content-card prod-dia-detalle-section" id="apartadoCitasDia" style="margin-top: 20px; display: none;" aria-labelledby="diaDetalleTitle">
+              <header class="prod-dia-header">
+                <div class="prod-dia-header-info">
+                  <div class="prod-dia-eyebrow">
+                    <span class="prod-dia-badge-dot"></span>
+                    <span id="diaDetalleFechaBadge">Día seleccionado</span>
+                    <span class="prod-dia-badge-count" id="diaDetalleCountBadge">0 citas</span>
+                  </div>
+                  <h3 class="prod-dia-title" id="diaDetalleTitle">Citas Médicas del Día</h3>
+                  <p class="prod-dia-sub" id="diaDetalleSub">Listado nominal de cada cita atendida. Haga clic en un paciente para ver su historia clínica o en un médico para ver su ficha.</p>
+                </div>
+                <div class="prod-dia-header-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="volverAlGraficoProd()" title="Volver al gráfico de barras">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 15l-6-6-6 6"/></svg>
+                    <span>Volver al gráfico</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-export-excel" onclick="exportarCitasDia('excel')" title="Descargar citas de este día a Excel">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+                    <span>Excel</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-export-pdf" onclick="exportarCitasDia('pdf')" title="Descargar citas de este día a PDF">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+                    <span>PDF</span>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="cerrarApartadoCitasDia()" title="Cerrar este apartado">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </header>
+
+              <!-- Mini KPIs del día seleccionado -->
+              <div class="prod-dia-kpi-grid" id="diaDetalleKpis"></div>
+
+              <!-- Filtros y buscador rápido del día -->
+              <div class="prod-dia-toolbar">
+                <div class="prod-dia-search-box">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-input" id="diaSearchInput" placeholder="Buscar por paciente, DNI, médico, diagnóstico, código CIE o servicio..." oninput="filtrarCitasDiaLocal()">
+                  <button type="button" class="prod-input-clear" id="diaSearchClear" onclick="limpiarBusquedaCitasDia()" style="display:none;" title="Limpiar búsqueda">✕</button>
+                </div>
+
+                <div class="prod-dia-filters">
+                  <div class="prod-select-box prod-select-compact">
+                    <select class="prod-select" id="diaFiltroServicio" onchange="filtrarCitasDiaLocal()">
+                      <option value="">Todos los servicios (UPS)</option>
+                    </select>
+                    <svg class="prod-select-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </div>
+
+                  <div class="prod-select-box prod-select-compact">
+                    <select class="prod-select" id="diaFiltroTipoDx" onchange="filtrarCitasDiaLocal()">
+                      <option value="">Todos los diagnósticos</option>
+                      <option value="D">Solo Definitivos (D)</option>
+                      <option value="P">Solo Presuntivos (P)</option>
+                      <option value="R">Solo Repetidos (R)</option>
+                    </select>
+                    <svg class="prod-select-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </div>
+
+                  <div class="prod-view-mode-toggle" role="group" aria-label="Modo de visualización">
+                    <button type="button" class="btn-toggle active" id="btnDiaModoCards" onclick="cambiarModoVistaDia('cards')" title="Vista Tarjetas (Agrupadas)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <span>Tarjetas</span>
+                    </button>
+                    <button type="button" class="btn-toggle" id="btnDiaModoTabla" onclick="cambiarModoVistaDia('tabla')" title="Vista Tabla Compacta">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      <span>Tabla</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Barra de estado y selector de páginas -->
+              <div class="prod-dia-status-row">
+                <span id="diaResultSummary" class="prod-dia-summary-text">Cargando citas...</span>
+                <div class="prod-dia-page-size">
+                  <label for="diaPageSizeSelect">Citas por página:</label>
+                  <select id="diaPageSizeSelect" class="prod-select-xs" onchange="cambiarPageSizeDia(this.value)">
+                    <option value="25" selected>25 citas</option>
+                    <option value="50">50 citas</option>
+                    <option value="100">100 citas</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Contenedor dinámico de citas (cards o tabla) -->
+              <div id="diaCitasContent" class="prod-dia-content-box">
+                <div class="table-empty"><span class="spinner-sm"></span> Cargando citas médicas del día...</div>
+              </div>
+
+              <!-- Paginación -->
+              <div class="prod-dia-pagination" id="diaPagination" style="display:none;"></div>
+            </section>
           </div>
 
           <!-- Pestaña 2: Tratamientos, Procedimientos CPMS y Diagnósticos CIE-10 -->
@@ -1669,11 +1808,12 @@
 <!-- JavaScript de la aplicación cargado desde frontend/js/app.js.
      ═══════════════════════════════════════════ -->
 <script src="/js/exportar.js?v=20261022-prod-1" defer></script>
-<script src="/js/app.js?v=20261022-prod-1" defer></script>
-<script src="/js/nominal.js?v=20261022-prod-1" defer></script>
-<script src="/js/paciente-simple.js?v=20261022-prod-1" defer></script>
+<script src="/js/app.js?v=20261028-modo-1" defer></script>
+<script src="/js/nominal.js?v=20261028-citas-1" defer></script>
+<script src="/js/historial.js?v=20261028-ficha-2" defer></script>
+<script src="/js/paciente-simple.js?v=20261028-limpiar-1" defer></script>
 <script src="/js/configuracion.js?v=20261022-prod-1" defer></script>
-<script src="/js/defunciones.js?v=20261022-prod-1" defer></script>
+<script src="/js/defunciones.js?v=20261028-modo-1" defer></script>
 <script src="/js/atencion-detalle.js?v=20261022-prod-1" defer></script>
 </body>
 </html>

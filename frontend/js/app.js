@@ -76,7 +76,7 @@ const viewMeta = {
   consultas: { title: 'Consultas y análisis', sub: 'Modo asistido y avanzado para contar pacientes, citas y registros HIS' },
   pacientes: { title: 'Pacientes', sub: '' },
   atenciones: { title: 'Atenciones', sub: 'Registros de NProduccion por cita, paciente, personal, código o fecha' },
-  defunciones: { title: 'Defunciones', sub: 'Registros del SINADEF de Ayacucho (V_SINADEF_AYACUCHO_DOMFALLECIDO)' },
+  defunciones: { title: 'Defunciones', sub: 'Personas fallecidas en Ayacucho según el certificado de defunción (SINADEF)' },
   personal: { title: 'Personal', sub: 'Ficha de cada profesional de MaestroPersonal y sus atenciones' },
   catalogos: { title: 'Catálogos', sub: 'Tablas maestras del HIS: diagnósticos, procedimientos, establecimientos, UPS y más' },
   reportes: { title: 'Producción asistencial', sub: 'Indicadores por año, mes, tratamiento, establecimiento y servicio' },
@@ -85,8 +85,23 @@ const viewMeta = {
   importar: { title: 'Importar datos', sub: 'Importación de archivos planos CSV a la base HIS' }
 };
 
+// Partes de la URL: #pacientes/123 → ['pacientes', '123'].
+function partesUrl() {
+  try { return location.hash.slice(1).split('/').map(decodeURIComponent); } catch { return ['']; }
+}
+
+// Vista indicada en la URL (#consultas); 'inicio' si no existe o el usuario no tiene acceso.
+function vistaDesdeUrl() {
+  const view = partesUrl()[0];
+  if (!view || !document.getElementById('view-' + view)) return 'inicio';
+  if (view === 'importar' && currentUser?.role !== 'admin') return 'inicio';
+  return view;
+}
+
 // Activa la vista y navegación elegidas, actualiza su encabezado y carga sus datos iniciales.
-function showView(view) {
+// La vista queda en la URL para que recargar la página o el botón Atrás vuelvan a ella.
+function showView(view, { desdeUrl = false } = {}) {
+  if (!desdeUrl && partesUrl()[0] !== view) history.pushState(null, '', '#' + view);
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const el = document.getElementById('view-' + view);
@@ -98,11 +113,13 @@ function showView(view) {
   document.querySelector('.page-head').hidden = view === 'inicio';
   document.getElementById('pageTitle').textContent = m.title || view;
   document.getElementById('pageSubtitle').textContent = m.sub || '';
-  if (view === 'reportes') { inicializarFiltrosProduccion(); cargarReportes(); }
+  if (view === 'reportes') abrirVistaProduccion();
   if (view === 'consultas') { cargarDashboardAnalitico(); inicializarFiltrosAsistidos(); }
   if (view === 'inicio') cargarInicio();
-  if (view === 'pacientes') abrirVistaPacientes();
-  if (view === 'personal') abrirVistaPersonal();
+  if (view === 'pacientes') abrirVistaPacientes(desdeUrl ? { id: partesUrl()[1] || '' } : {});
+  if (view === 'personal') abrirVistaPersonal(desdeUrl ? { id: partesUrl()[1] || '' } : {});
+  if (view === 'atenciones') abrirVistaAtenciones();
+  if (view === 'defunciones') abrirVistaDefunciones();
   if (view === 'catalogos') cargarCatalogos();
   if (view === 'perfil') renderUserProfile();
   if (view === 'importar') initImportView();
@@ -171,7 +188,11 @@ async function initializeMainApp() {
   let modo = 'stacked';
   try { modo = localStorage.getItem('his_query_layout_mode') || 'stacked'; } catch { /* sin almacenamiento */ }
   setQueryLayoutMode(modo);
-  showView('inicio');
+  if (partesUrl()[0] !== vistaDesdeUrl()) history.replaceState(null, '', '#' + vistaDesdeUrl());
+  showView(vistaDesdeUrl(), { desdeUrl: true });
+  window.addEventListener('popstate', () => {
+    if (currentUser) showView(vistaDesdeUrl(), { desdeUrl: true });
+  });
 }
 
 const enterApplication = async user => {
@@ -2743,7 +2764,6 @@ function abrirActividadPersonal(personal) {
   const dato = personal?.documento || personal?.nombre || personal?.descripcion || '';
   showView('personal');
   sv('qPersonal', String(dato));
-  sv('modoPersonal', 'todo');
   if (dato) buscarPersonal();
 }
 function abrirFichaPersonalDesdeReporte(personal) {
@@ -2825,7 +2845,6 @@ function renderBarras(targetId, rows = [], labelField, valueField, detailField =
 // ═══════════════════════════════════════════════════════════════════════════
 
 let filtrosProduccionCargados = false;
-
 let diagAutocompleteInitialized = false;
 let diagDebounceTimer = null;
 let currentDiagItems = [];
@@ -3026,7 +3045,6 @@ async function inicializarFiltrosProduccion() {
     const data = await apiFetch('/atenciones/filtros-produccion');
     filtrosProduccionCargados = true;
 
-    // Selector de Años
     const anioSelect = document.getElementById('prodFiltroAnio');
     if (anioSelect && data.anios?.length) {
       const current = anioSelect.value || '2026';
@@ -3034,14 +3052,12 @@ async function inicializarFiltrosProduccion() {
         data.anios.map(a => `<option value="${esc(a)}" ${a === current ? 'selected' : ''}>${esc(a)}</option>`).join('');
     }
 
-    // Selector de Establecimientos
     const estSelect = document.getElementById('prodFiltroEstablecimiento');
     if (estSelect && data.establecimientos?.length) {
       estSelect.innerHTML = `<option value="">Todos los establecimientos</option>` +
         data.establecimientos.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)}</option>`).join('');
     }
 
-    // Selector de Servicios / UPS
     const upsSelect = document.getElementById('prodFiltroUps');
     if (upsSelect && data.servicios?.length) {
       upsSelect.innerHTML = `<option value="">Todos los servicios</option>` +
@@ -3052,7 +3068,6 @@ async function inicializarFiltrosProduccion() {
   }
 }
 
-// Ejecuta la consulta de producción con los filtros dinámicos seleccionados
 async function aplicarFiltrosProduccion() {
   cargarReportes();
 }
@@ -3083,8 +3098,8 @@ async function cargarReportes() {
   if (fechaInicio) params.set('fechaInicio', fechaInicio);
   if (fechaFin) params.set('fechaFin', fechaFin);
 
-  // Renderizar barra de píldoras de filtros activos
   actualizarBarraFiltrosActivos({ anio, mes, tratamiento, establecimiento, ups, fechaInicio, fechaFin });
+  if (typeof cerrarApartadoCitasDia === 'function') cerrarApartadoCitasDia();
 
   const cacheKey = params.toString();
   const cachedEntry = window._reportClientCache?.get(cacheKey);
@@ -3128,25 +3143,39 @@ async function cargarReportes() {
     const totalCitas = summary.citasAtendidas ?? summary.atenciones ?? 0;
     const esDiario = Boolean(data.filtrosAplicados?.esDiario);
 
-    // Actualizar títulos de gráficos según nivel de agregación (Diario vs Mensual)
+    const anioNum = parseInt(anio, 10) || (data.porMes?.[0] ? parseInt(data.porMes[0].periodo.slice(0, 4), 10) : new Date().getFullYear());
+    const mesNum = parseInt(mes, 10) || (data.porMes?.[0] ? parseInt(data.porMes[0].periodo.slice(5, 7), 10) : new Date().getMonth() + 1);
+    const totalDiasEnMes = new Date(anioNum, mesNum, 0).getDate();
+    const mesesNombres = {
+      1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+      7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    };
+    const nombreMes = mesesNombres[mesNum] || `Mes ${mesNum}`;
+
     const tendenciaTitle = document.getElementById('reporteTendenciaTitle');
     const tendenciaSub = document.getElementById('reporteTendenciaSub');
     if (tendenciaTitle) {
-      tendenciaTitle.textContent = esDiario ? 'Evolución diaria de citas atendidas en el mes' : 'Evolución mensual de citas atendidas';
+      tendenciaTitle.textContent = esDiario
+        ? `Evolución diaria de citas — ${nombreMes} ${anioNum} (${totalDiasEnMes} días)`
+        : `Evolución mensual de citas atendidas ${anio ? `(${anio})` : ''}`;
     }
     if (tendenciaSub) {
-      tendenciaSub.textContent = esDiario ? 'Atenciones registradas por día del mes' : 'Haga clic en una barra para filtrar directamente por ese mes';
+      tendenciaSub.textContent = esDiario
+        ? `Citas atendidas por cada día del mes (del 1 al ${totalDiasEnMes} de ${nombreMes.toLowerCase()})`
+        : 'Haga clic en una barra para ver el desglose diario de ese mes';
     }
 
-    // Actualizar badges de conteo en las pestañas del espacio de trabajo
     const bTrat = document.getElementById('prodBadgeTratamientos');
     if (bTrat) bTrat.textContent = (data.diagnosticos || []).length;
     const bPers = document.getElementById('prodBadgePersonal');
     if (bPers) bPers.textContent = (data.personal || []).length;
     const btnVolver = document.getElementById('btnVolverMensualWrap');
-    if (btnVolver) btnVolver.style.display = esDiario ? 'block' : 'none';
+    if (btnVolver) {
+      btnVolver.style.display = esDiario ? 'block' : 'none';
+      const btnTxt = btnVolver.querySelector('button');
+      if (btnTxt) btnTxt.textContent = `← Ver año completo (${anioNum})`;
+    }
 
-    // 1. Tarjetas de Métricas KPI Ejecutivas (Exacto al Mockup: 6 Tarjetas)
     const estabCount = summary.establecimientosActivos || (data.establecimientos || []).length;
     const codigosCount = summary.codigosRegistrados || (data.diagnosticos || []).length;
 
@@ -3218,7 +3247,6 @@ async function cargarReportes() {
       </div>
     `;
 
-    // Actualizar indicador de última actualización en el header
     const updatedEl = document.getElementById('prodLastUpdated');
     if (updatedEl) {
       const now = new Date();
@@ -3228,7 +3256,6 @@ async function cargarReportes() {
       });
     }
 
-    // Actualizar indicador de periodo en la tarjeta de aspectos clave
     const indPeriodo = document.getElementById('prodIndPeriodo');
     if (indPeriodo) {
       const mesesNom = {
@@ -3238,29 +3265,17 @@ async function cargarReportes() {
       indPeriodo.textContent = anio ? (mes ? `${mesesNom[mes] || mes} ${anio}` : `Año ${anio}`) : 'Todos';
     }
 
-    // 2. Gráficos y Tablas Principales (Mockup Health Analysis)
-    // Donut SVG de Distribución de Establecimientos
     renderDonutEstablecimientos('reporteDonutEstablecimientos', data.establecimientos || [], totalCitas);
-
-    // Gráfico Lollipop de Tratamientos y Procedimientos
     renderLollipopTratamientos('reporteLollipopTratamientos', data.diagnosticos || []);
+    renderBarrasVerticalesMeses('reporteMeses', data.porMes || [], 'periodo', 'atenciones', esDiario, anioNum, mesNum);
 
-    // Gráfico de Barras Verticales con cifras encima de cada barra
-    renderBarrasVerticalesMeses('reporteMeses', data.porMes || [], 'periodo', 'atenciones', esDiario);
-
-    // Guardar datos en memoria para ordenamiento interactivo
     reporteDiagnosticosRows = [...(data.diagnosticos || [])];
     reportePersonalRows = [...(data.personal || [])];
     reporteEstablecimientosRows = [...(data.establecimientos || [])];
     totalCitasReporteActual = totalCitas;
 
-    // Matriz de Producción Asistencial con totales y ordenamiento
     aplicarOrdenEstablecimientosYRender();
-
-    // Elemento oculto para compatibilidad
     renderBarrasProduccionClickable('reporteEstablecimientos', data.establecimientos || [], 'nombre', 'atenciones', false, 'estab');
-
-    // Tablas de Tratamientos y Personal de Salud con ordenamiento interactivo
     aplicarOrdenDiagnosticosYRender();
     aplicarOrdenPersonalYRender();
   } catch (error) {
@@ -3280,7 +3295,6 @@ async function cargarReportes() {
   }
 }
 
-// Renderiza gráfico de barras con interactividad de filtrado
 function renderBarrasProduccionClickable(targetId, items, labelKey, valueKey, esDiario = false, clickType = 'periodo') {
   const container = document.getElementById(targetId);
   if (!container) return;
@@ -3323,7 +3337,6 @@ function renderBarrasProduccionClickable(targetId, items, labelKey, valueKey, es
   }).join('');
 }
 
-// Filtra la producción cuando el usuario hace clic en una barra mensual
 function filtrarPorMesGrafico(periodoStr) {
   if (!periodoStr || !periodoStr.includes('-')) return;
   const parts = periodoStr.split('-');
@@ -3339,11 +3352,6 @@ function filtrarPorMesGrafico(periodoStr) {
   cargarReportes();
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// RENDERIZADORES DE GRÁFICOS Y TABLAS (DASHBOARD HEALTH ANALYSIS)
-// ═══════════════════════════════════════════════════════════════════
-
-// 1. Gráfico Donut SVG de Distribución de Establecimientos
 function renderDonutEstablecimientos(containerId, establecimientos, totalCitas) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -3357,7 +3365,7 @@ function renderDonutEstablecimientos(containerId, establecimientos, totalCitas) 
   const total = totalCitas || top.reduce((acc, curr) => acc + (Number(curr.atenciones) || 0), 0) || 1;
 
   const radius = 38;
-  const circumference = 2 * Math.PI * radius; // ~238.76
+  const circumference = 2 * Math.PI * radius;
   let offset = 0;
 
   const circles = top.map((item, idx) => {
@@ -3400,7 +3408,6 @@ function renderDonutEstablecimientos(containerId, establecimientos, totalCitas) 
     </div>`;
 }
 
-// 2. Gráfico Lollipop de Tratamientos y Procedimientos
 function renderLollipopTratamientos(containerId, diagnosticos) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -3429,51 +3436,838 @@ function renderLollipopTratamientos(containerId, diagnosticos) {
   }).join('');
 }
 
-// 3. Gráfico de Barras Verticales con cifras numéricas encima
-function renderBarrasVerticalesMeses(containerId, items, labelKey, valueKey, esDiario = false) {
+function renderBarrasVerticalesMeses(containerId, items, labelKey, valueKey, esDiario = false, anioNum = null, mesNum = null) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  if (!items || !items.length) {
-    container.innerHTML = '<div class="table-empty">No hay datos suficientes para graficar la evolución.</div>';
-    return;
-  }
 
-  const maxVal = Math.max(...items.map(i => Number(i[valueKey]) || 0), 1);
+  container.classList.toggle('is-daily', Boolean(esDiario));
+
   const mesesCortos = {
     '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun',
     '07': 'Jul', '08': 'Ago', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic'
   };
 
-  // Mostrar hasta 12 periodos ordenados cronológicamente
-  const displayItems = items.slice(0, 12).reverse();
+  const mesesNombres = {
+    1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+    7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+  };
 
-  container.innerHTML = displayItems.map(item => {
-    const val = Number(item[valueKey]) || 0;
-    const rawLabel = String(item[labelKey] || '');
-    let displayLabel = rawLabel;
+  if (esDiario) {
+    // ═════════════════════════════════════════════════════════
+    // MODO DIARIO: Exactamente los días del mes (28, 29, 30 o 31)
+    // ═════════════════════════════════════════════════════════
+    const currentYear = anioNum || (items?.[0] ? parseInt(String(items[0][labelKey]).slice(0, 4), 10) : new Date().getFullYear());
+    const currentMonth = mesNum || (items?.[0] ? parseInt(String(items[0][labelKey]).slice(5, 7), 10) : new Date().getMonth() + 1);
 
-    if (!esDiario && /^\d{4}-\d{2}$/.test(rawLabel)) {
-      const parts = rawLabel.split('-');
-      displayLabel = mesesCortos[parts[1]] || parts[1];
-    } else if (esDiario && /^\d{4}-\d{2}-\d{2}$/.test(rawLabel)) {
-      displayLabel = rawLabel.split('-')[2];
+    // Días exactos del mes (considera años bisiestos en febrero: 28 o 29)
+    const totalDiasEnMes = new Date(currentYear, currentMonth, 0).getDate();
+    const nombreMes = mesesNombres[currentMonth] || `Mes ${currentMonth}`;
+
+    // Mapear los datos de la consulta SQL por número de día
+    const mapPorDia = new Map();
+    (items || []).forEach(item => {
+      const raw = String(item[labelKey] || '');
+      let dia = null;
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+        dia = parseInt(raw.split('-')[2], 10);
+      } else if (/^\d{1,2}$/.test(raw)) {
+        dia = parseInt(raw, 10);
+      }
+      if (dia !== null && !isNaN(dia)) {
+        mapPorDia.set(dia, {
+          val: Number(item[valueKey]) || 0,
+          rawPeriodo: raw
+        });
+      }
+    });
+
+    // Calcular el valor máximo para la escala del gráfico
+    const todosLosValores = [];
+    for (let d = 1; d <= totalDiasEnMes; d++) {
+      todosLosValores.push(mapPorDia.get(d)?.val || 0);
+    }
+    const maxVal = Math.max(...todosLosValores, 1);
+
+    const barrasHtml = [];
+    for (let dia = 1; dia <= totalDiasEnMes; dia++) {
+      const diaPad = String(dia).padStart(2, '0');
+      const mesPad = String(currentMonth).padStart(2, '0');
+      const fechaIso = `${currentYear}-${mesPad}-${diaPad}`;
+      const entry = mapPorDia.get(dia);
+      const val = entry ? entry.val : 0;
+      const isZero = val === 0;
+      const isPeak = val > 0 && val === maxVal;
+
+      // Porcentaje de altura visual: 3% si es cero, hasta 85% para el pico
+      const heightPct = isZero ? 3 : Math.max(10, Math.round((val / maxVal) * 85));
+
+      // Número compacto para evitar que se amontone en 31 días
+      let compactVal = '';
+      if (val >= 1000) {
+        compactVal = (val / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      } else if (val > 0) {
+        compactVal = String(val);
+      }
+
+      const tooltip = isZero
+        ? `Día ${diaPad} de ${nombreMes} (${fechaIso}): Sin atenciones registradas`
+        : `Día ${diaPad} de ${nombreMes} (${fechaIso}): ${formatNumber(val)} citas atendidas${isPeak ? ' ★ Día con mayor demanda del mes' : ''}. Clic para ver atenciones.`;
+
+      barrasHtml.push(`
+        <div class="vbar-col ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}"
+             onclick="verDetalleDiaProd('${fechaIso}', ${val})"
+             title="${esc(tooltip)}">
+          <span class="vbar-val">${compactVal}</span>
+          <div class="vbar-body ${isPeak ? 'active-bar' : ''}" style="height:${heightPct}%;"></div>
+          <span class="vbar-label">${diaPad}</span>
+        </div>
+      `);
     }
 
-    const heightPct = Math.max(12, Math.round((val / maxVal) * 82));
-    const clickAttr = !esDiario && rawLabel.includes('-')
-      ? `onclick="filtrarPorMesGrafico('${esc(rawLabel)}')"`
-      : '';
+    container.innerHTML = barrasHtml.join('');
+    return;
+  }
+
+  // ═════════════════════════════════════════════════════════
+  // MODO ANUAL: Los 12 meses cronológicos de Enero a Diciembre
+  // ═════════════════════════════════════════════════════════
+  const targetYear = anioNum || (items?.[0] ? parseInt(String(items[0][labelKey]).slice(0, 4), 10) : new Date().getFullYear());
+  const mapPorMes = new Map();
+
+  (items || []).forEach(item => {
+    const raw = String(item[labelKey] || '');
+    let m = null;
+    if (/^\d{4}-\d{2}/.test(raw)) {
+      m = raw.split('-')[1];
+    } else if (/^\d{1,2}$/.test(raw)) {
+      m = raw.padStart(2, '0');
+    }
+    if (m) {
+      mapPorMes.set(m, {
+        val: Number(item[valueKey]) || 0,
+        rawPeriodo: raw.includes('-') ? raw : `${targetYear}-${m}`
+      });
+    }
+  });
+
+  const mesesKeys = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+  const maxVal = Math.max(...Array.from(mapPorMes.values()).map(x => x.val), 1);
+
+  container.innerHTML = mesesKeys.map(m => {
+    const entry = mapPorMes.get(m);
+    const val = entry ? entry.val : 0;
+    const rawPeriodo = entry ? entry.rawPeriodo : `${targetYear}-${m}`;
+    const heightPct = val === 0 ? 3 : Math.max(12, Math.round((val / maxVal) * 82));
+    const isPeak = val > 0 && val === maxVal;
+    const isZero = val === 0;
+    const nombreMes = mesesNombres[parseInt(m, 10)];
 
     return `
-      <div class="vbar-col" ${clickAttr} title="${esc(rawLabel)}: ${formatNumber(val)} citas (${esDiario ? 'Día' : 'Clic para filtrar por este mes'})">
-        <span class="vbar-val">${formatNumber(val)}</span>
-        <div class="vbar-body" style="height:${heightPct}%;"></div>
-        <span class="vbar-label">${esc(displayLabel)}</span>
+      <div class="vbar-col ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}"
+           onclick="filtrarPorMesGrafico('${esc(rawPeriodo)}')"
+           title="${nombreMes} ${targetYear}: ${formatNumber(val)} citas atendidas${isPeak ? ' ★ Mes con mayor producción' : ''} (Clic para ver desglose por días)">
+        <span class="vbar-val">${val > 0 ? formatNumber(val) : ''}</span>
+        <div class="vbar-body ${isPeak ? 'active-bar' : ''}" style="height:${heightPct}%;"></div>
+        <span class="vbar-label">${mesesCortos[m]}</span>
       </div>`;
   }).join('');
 }
 
-// 4. Matriz de Producción Asistencial con Totales
+// ═══════════════════════════════════════════════════════════════════════════
+// APARTADO NOMINAL DE CITAS DEL DÍA SELECCIONADO
+// ═══════════════════════════════════════════════════════════════════════════
+
+let estadoDiaDetalle = {
+  fechaIso: null,
+  data: null,
+  citasOriginales: [],
+  citasFiltradas: [],
+  pagina: 1,
+  pageSize: 25,
+  modoVista: 'cards',
+  filtroTexto: '',
+  filtroServicio: '',
+  filtroTipoDx: '',
+  cargando: false
+};
+
+function marcarBarraDiaSeleccionada(fechaIso) {
+  const container = document.getElementById('reporteMeses');
+  if (!container) return;
+  const cols = container.querySelectorAll('.vbar-col');
+  cols.forEach(col => {
+    col.classList.remove('is-selected');
+    const onclickStr = col.getAttribute('onclick') || '';
+    if (onclickStr.includes(fechaIso)) {
+      col.classList.add('is-selected');
+    }
+  });
+}
+
+function verDetalleDiaProd(fechaIso, val) {
+  if (!fechaIso) return;
+  const partes = fechaIso.split('-');
+  const diaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+  if (!val || val === 0) {
+    if (typeof toast === 'function') {
+      toast(`El día ${diaFmt} no registra citas asistenciales.`, 'info');
+    }
+    return;
+  }
+
+  // 1. Resaltar visualmente la barra en el gráfico
+  marcarBarraDiaSeleccionada(fechaIso);
+
+  // 2. Abrir y cargar el apartado de citas de ese día
+  abrirApartadoCitasDia(fechaIso);
+}
+window.verDetalleDiaProd = verDetalleDiaProd;
+
+async function abrirApartadoCitasDia(fechaIso) {
+  const sec = document.getElementById('apartadoCitasDia');
+  if (!sec) return;
+
+  sec.style.display = 'block';
+
+  // Desplazamiento suave al apartado
+  setTimeout(() => {
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+
+  const partes = fechaIso.split('-');
+  const anio = parseInt(partes[0], 10);
+  const mes = parseInt(partes[1], 10);
+  const dia = parseInt(partes[2], 10);
+  const fechaObj = new Date(anio, mes - 1, dia);
+
+  const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const nombreDiaSemana = diasSemana[fechaObj.getDay()];
+  const nombreMes = mesesNombres[mes - 1];
+
+  const fechaFmtLarga = `${nombreDiaSemana}, ${dia} de ${nombreMes} de ${anio}`;
+  const fechaFmtCorta = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${anio}`;
+
+  const badgeFecha = document.getElementById('diaDetalleFechaBadge');
+  if (badgeFecha) badgeFecha.textContent = fechaFmtLarga;
+
+  const countBadge = document.getElementById('diaDetalleCountBadge');
+  if (countBadge) countBadge.textContent = 'Consultando...';
+
+  const titleEl = document.getElementById('diaDetalleTitle');
+  if (titleEl) titleEl.textContent = `Citas Médicas del Día — ${fechaFmtLarga}`;
+
+  const subEl = document.getElementById('diaDetalleSub');
+  if (subEl) subEl.textContent = `Desglose nominal de cada cita atendida el ${fechaFmtCorta}. Puede buscar pacientes, médicos, diagnósticos o filtrar por servicio.`;
+
+  const kpisEl = document.getElementById('diaDetalleKpis');
+  if (kpisEl) {
+    kpisEl.innerHTML = `<div class="table-empty"><span class="spinner-sm"></span> Obteniendo métricas del día...</div>`;
+  }
+
+  const contentEl = document.getElementById('diaCitasContent');
+  if (contentEl) {
+    contentEl.innerHTML = `<div class="table-empty"><span class="spinner-sm"></span> Cargando citas médicas atendidas el ${fechaFmtLarga}...</div>`;
+  }
+
+  const summaryEl = document.getElementById('diaResultSummary');
+  if (summaryEl) summaryEl.textContent = 'Cargando información asistencial...';
+
+  // Limpiar inputs de filtro del día
+  const searchInput = document.getElementById('diaSearchInput');
+  if (searchInput) searchInput.value = '';
+  const searchClear = document.getElementById('diaSearchClear');
+  if (searchClear) searchClear.style.display = 'none';
+
+  const filtroTipoDx = document.getElementById('diaFiltroTipoDx');
+  if (filtroTipoDx) filtroTipoDx.value = '';
+
+  estadoDiaDetalle.fechaIso = fechaIso;
+  estadoDiaDetalle.pagina = 1;
+  estadoDiaDetalle.filtroTexto = '';
+  estadoDiaDetalle.filtroServicio = '';
+  estadoDiaDetalle.filtroTipoDx = '';
+  estadoDiaDetalle.cargando = true;
+
+  try {
+    const params = new URLSearchParams({ fecha: fechaIso });
+
+    const estabVal = (document.getElementById('prodFiltroEstablecimiento')?.value || '').trim();
+    if (estabVal) params.set('idEstablecimiento', estabVal);
+
+    const upsVal = (document.getElementById('prodFiltroUps')?.value || '').trim();
+    if (upsVal) params.set('idUps', upsVal);
+
+    const diagVal = (document.getElementById('prodFiltroTratamientoCodigo')?.value || '').trim();
+    if (diagVal) params.set('codigoItem', diagVal);
+
+    const res = await apiFetch(`/atenciones/citas-dia?${params.toString()}`);
+    estadoDiaDetalle.data = res;
+    estadoDiaDetalle.citasOriginales = res.citas || [];
+    estadoDiaDetalle.citasFiltradas = [...(res.citas || [])];
+    estadoDiaDetalle.cargando = false;
+
+    if (countBadge) countBadge.textContent = `${formatNumber(res.totalCitas || 0)} citas`;
+
+    // Renderizar KPIs del día
+    renderKpisDiaDetalle(res);
+
+    // Llenar selector de servicios
+    const servicioSel = document.getElementById('diaFiltroServicio');
+    if (servicioSel) {
+      let optHtml = '<option value="">Todos los servicios (UPS)</option>';
+      (res.servicios || []).forEach(s => {
+        optHtml += `<option value="${esc(s.id)}">${esc(s.nombre)}</option>`;
+      });
+      servicioSel.innerHTML = optHtml;
+      servicioSel.value = '';
+    }
+
+    // Renderizar listado de citas
+    filtrarCitasDiaLocal();
+
+  } catch (err) {
+    estadoDiaDetalle.cargando = false;
+    if (countBadge) countBadge.textContent = 'Error';
+    if (contentEl) {
+      contentEl.innerHTML = `<div class="table-empty" style="color:var(--c-danger);">
+        Error al cargar citas del día: ${esc(err.message || 'Error de conexión')}
+      </div>`;
+    }
+  }
+}
+window.abrirApartadoCitasDia = abrirApartadoCitasDia;
+
+function renderKpisDiaDetalle(res) {
+  const kpisEl = document.getElementById('diaDetalleKpis');
+  if (!kpisEl) return;
+
+  kpisEl.innerHTML = `
+    <div class="prod-dia-kpi-card card-purple">
+      <div class="dia-kpi-top">
+        <span class="dia-kpi-label">Citas Atendidas</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="dia-kpi-value">${esc(formatNumber(res.totalCitas || 0))}</div>
+      <div class="dia-kpi-foot">Consultas y visitas del día</div>
+    </div>
+
+    <div class="prod-dia-kpi-card card-magenta">
+      <div class="dia-kpi-top">
+        <span class="dia-kpi-label">Pacientes Únicos</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      </div>
+      <div class="dia-kpi-value">${esc(formatNumber(res.totalPacientes || 0))}</div>
+      <div class="dia-kpi-foot">Pacientes atendidos</div>
+    </div>
+
+    <div class="prod-dia-kpi-card card-teal">
+      <div class="dia-kpi-top">
+        <span class="dia-kpi-label">Personal de Salud</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="dia-kpi-value">${esc(formatNumber(res.totalPersonal || 0))}</div>
+      <div class="dia-kpi-foot">Médicos y profesionales activos</div>
+    </div>
+
+    <div class="prod-dia-kpi-card card-blue">
+      <div class="dia-kpi-top">
+        <span class="dia-kpi-label">Registros HIS</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div class="dia-kpi-value">${esc(formatNumber(res.totalRegistros || 0))}</div>
+      <div class="dia-kpi-foot">${esc(formatNumber(res.totalCodigos || 0))} códigos CIE/CPMS</div>
+    </div>
+  `;
+}
+
+function filtrarCitasDiaLocal() {
+  const searchInput = document.getElementById('diaSearchInput');
+  const searchClear = document.getElementById('diaSearchClear');
+  const q = (searchInput?.value || '').toLowerCase().trim();
+  if (searchClear) searchClear.style.display = q ? 'inline-block' : 'none';
+
+  const servicioVal = (document.getElementById('diaFiltroServicio')?.value || '').trim();
+  const tipoDxVal = (document.getElementById('diaFiltroTipoDx')?.value || '').toUpperCase().trim();
+
+  estadoDiaDetalle.filtroTexto = q;
+  estadoDiaDetalle.filtroServicio = servicioVal;
+  estadoDiaDetalle.filtroTipoDx = tipoDxVal;
+  estadoDiaDetalle.pagina = 1;
+
+  const todas = estadoDiaDetalle.citasOriginales || [];
+
+  estadoDiaDetalle.citasFiltradas = todas.filter(cita => {
+    // Filtro por servicio
+    if (servicioVal && String(cita.idUps) !== servicioVal) {
+      return false;
+    }
+
+    // Filtro por tipo de diagnóstico (D, P, R)
+    if (tipoDxVal) {
+      const tieneTipo = (cita.items || []).some(it => (it.tipoDiagnostico || '').toUpperCase().trim() === tipoDxVal);
+      if (!tieneTipo) return false;
+    }
+
+    // Filtro de búsqueda textual
+    if (q) {
+      const matchPac = (cita.nombrePaciente || '').toLowerCase().includes(q) ||
+                       (cita.documentoPaciente || '').toLowerCase().includes(q) ||
+                       (cita.historiaClinica || '').toLowerCase().includes(q) ||
+                       String(cita.idCita || '').includes(q);
+      const matchDoc = (cita.nombrePersonal || '').toLowerCase().includes(q) ||
+                       (cita.profesion || '').toLowerCase().includes(q) ||
+                       (cita.documentoPersonal || '').toLowerCase().includes(q);
+      const matchServ = (cita.servicio || '').toLowerCase().includes(q) ||
+                        (cita.establecimiento || '').toLowerCase().includes(q);
+      const matchDx = (cita.items || []).some(it =>
+        (it.codigo || '').toLowerCase().includes(q) ||
+        (it.descripcion || '').toLowerCase().includes(q)
+      );
+
+      if (!matchPac && !matchDoc && !matchServ && !matchDx) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  renderCitasDiaContenido();
+}
+window.filtrarCitasDiaLocal = filtrarCitasDiaLocal;
+
+function limpiarBusquedaCitasDia() {
+  const searchInput = document.getElementById('diaSearchInput');
+  if (searchInput) {
+    searchInput.value = '';
+    searchInput.focus();
+  }
+  filtrarCitasDiaLocal();
+}
+window.limpiarBusquedaCitasDia = limpiarBusquedaCitasDia;
+
+function cambiarModoVistaDia(modo) {
+  estadoDiaDetalle.modoVista = modo;
+  document.getElementById('btnDiaModoCards')?.classList.toggle('active', modo === 'cards');
+  document.getElementById('btnDiaModoTabla')?.classList.toggle('active', modo === 'tabla');
+  renderCitasDiaContenido();
+}
+window.cambiarModoVistaDia = cambiarModoVistaDia;
+
+function cambiarPageSizeDia(val) {
+  estadoDiaDetalle.pageSize = val === 'all' ? 999999 : parseInt(val, 10) || 25;
+  estadoDiaDetalle.pagina = 1;
+  renderCitasDiaContenido();
+}
+window.cambiarPageSizeDia = cambiarPageSizeDia;
+
+function irAPaginaDia(pageNum) {
+  estadoDiaDetalle.pagina = pageNum;
+  renderCitasDiaContenido();
+  document.getElementById('diaCitasContent')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+window.irAPaginaDia = irAPaginaDia;
+
+function renderCitasDiaContenido() {
+  const contentEl = document.getElementById('diaCitasContent');
+  const summaryEl = document.getElementById('diaResultSummary');
+  const pagEl = document.getElementById('diaPagination');
+  if (!contentEl) return;
+
+  const total = estadoDiaDetalle.citasFiltradas.length;
+  const totalOrig = estadoDiaDetalle.citasOriginales.length;
+  const pageSize = estadoDiaDetalle.pageSize;
+  const page = estadoDiaDetalle.pagina;
+
+  if (total === 0) {
+    if (summaryEl) summaryEl.textContent = '0 citas encontradas';
+    if (pagEl) pagEl.style.display = 'none';
+    contentEl.innerHTML = `
+      <div class="table-empty">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="margin:0 auto 10px; opacity:0.6;"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <p style="font-weight:600; font-size:15px; margin-bottom:4px;">No se encontraron citas médicas</p>
+        <p style="color:var(--c-muted); font-size:13px;">Pruebe ajustando el texto de búsqueda o los filtros de servicio y diagnóstico.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const totalPages = Math.ceil(total / pageSize);
+  const startIdx = (page - 1) * pageSize;
+  const endIdx = Math.min(startIdx + pageSize, total);
+  const citasPagina = estadoDiaDetalle.citasFiltradas.slice(startIdx, endIdx);
+
+  if (summaryEl) {
+    summaryEl.textContent = totalOrig === total
+      ? `Mostrando citas ${formatNumber(startIdx + 1)} - ${formatNumber(endIdx)} de ${formatNumber(total)} citas médicas atendidas`
+      : `Mostrando ${formatNumber(startIdx + 1)} - ${formatNumber(endIdx)} de ${formatNumber(total)} citas filtradas (de un total de ${formatNumber(totalOrig)})`;
+  }
+
+  if (estadoDiaDetalle.modoVista === 'tabla') {
+    contentEl.innerHTML = renderTablaCitasDia(citasPagina);
+  } else {
+    contentEl.innerHTML = renderCardsCitasDia(citasPagina);
+  }
+
+  renderPaginacionDia(totalPages, page);
+}
+
+function renderCardsCitasDia(citas) {
+  return `
+    <div class="citas-grid">
+      ${citas.map(cita => {
+        const fullName = cita.nombrePaciente || 'Sin nombre registrado';
+        const docPac = cita.documentoPaciente || cita.idPaciente || '-';
+        const docMed = cita.documentoPersonal || '-';
+        const turnoDesc = cita.turno === 'M' ? 'Mañana' : cita.turno === 'T' ? 'Tarde' : cita.turno === 'N' ? 'Noche' : (cita.turno || 'Sin turno');
+        const edadLabel = cita.edad !== null && cita.edad !== undefined ? `${cita.edad} ${cita.tipoEdad === 'M' ? 'meses' : cita.tipoEdad === 'D' ? 'días' : 'años'}` : '-';
+        const generoLabel = cita.genero === 'M' ? 'Masculino' : cita.genero === 'F' ? 'Femenino' : (cita.genero || '');
+
+        return `
+          <div class="cita-card">
+            <div class="cita-card-header">
+              <div class="cita-header-left">
+                ${cita.idCita ? `<span class="cita-id-pill">Cita #${esc(cita.idCita)}</span>` : ''}
+                <span class="cita-date-badge">${esc(cita.fecha)}</span>
+                <span class="badge badge-turn" title="Turno de atención">Turno ${esc(turnoDesc)}</span>
+                <span class="badge badge-neutral">${cita.items.length} prestación${cita.items.length !== 1 ? 'es' : ''}</span>
+              </div>
+              <div class="actions">
+                <button type="button" class="btn btn-primary btn-xs" onclick="abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)" title="Ver Historia Clínica del Paciente">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                  Historia Clínica
+                </button>
+              </div>
+            </div>
+
+            <div class="cita-card-body">
+              <div class="cita-info-row">
+                <div class="cita-info-item">
+                  <strong>Paciente:</strong>
+                  <button type="button" class="btn-cell-link patient-cell-btn" onclick="abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)" title="Ver ficha del paciente">
+                    ${esc(fullName)} (DNI: ${esc(docPac)})${cita.historiaClinica ? ` · HC: ${esc(cita.historiaClinica)}` : ''} ↗
+                  </button>
+                  <span class="cita-patient-meta">(${esc(edadLabel)}${generoLabel ? ` · ${esc(generoLabel)}` : ''})</span>
+                </div>
+
+                <div class="cita-info-item">
+                  <strong>Médico / Profesional:</strong>
+                  <button type="button" class="btn-cell-link personal-cell-btn" onclick="abrirPersonalDesdeResultados('${escJs(cita.nombrePersonal)}', event)" title="Ver ficha y producción del profesional">
+                    ${esc(cita.nombrePersonal || 'No registrado')} ↗
+                  </button>
+                  <span class="cita-medico-prof">(${esc(cita.profesion || 'Personal de salud')}${docMed !== '-' ? ` · DNI ${esc(docMed)}` : ''})</span>
+                </div>
+
+                <div class="cita-info-item">
+                  <strong>Servicio (UPS):</strong>
+                  <span class="service-chip">${esc(cita.servicio || '-')}</span>
+                </div>
+
+                <div class="cita-info-item">
+                  <strong>Establecimiento:</strong>
+                  <span>${esc(cita.establecimiento || 'Hospital Regional de Ayacucho')}</span>
+                </div>
+
+                ${cita.financiador ? `
+                  <div class="cita-info-item">
+                    <strong>Financiador:</strong>
+                    <span class="fin-chip">${esc(cita.financiador)}</span>
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="cita-dx-section">
+                <div class="cita-dx-title">Diagnósticos y Procedimientos atendidos en esta cita:</div>
+                <div class="cita-dx-chips">
+                  ${cita.items.map(it => {
+                    const td = (it.tipoDiagnostico || '').toUpperCase().trim();
+                    const tipoLabel = td === 'D' ? 'Definitivo' : td === 'P' ? 'Presuntivo' : td === 'R' ? 'Repetido' : (td || '-');
+                    const tipoClass = td === 'D' ? 'badge-definitivo' : td === 'P' ? 'badge-presuntivo' : td === 'R' ? 'badge-repetido' : 'badge-neutral';
+                    return `
+                      <div class="cita-dx-item" title="Haga clic en el código para ver estadísticas hospitalarias">
+                        <span class="dx-tipo-tag ${tipoClass}">${esc(tipoLabel)}</span>
+                        <span class="code-badge font-bold" style="cursor:pointer;" onclick="abrirModalActividadCodigo('${escJs(it.codigo)}', '${escJs(it.descripcion || '')}', event)">
+                          ${esc(it.codigo || '-')} ↗
+                        </span>
+                        <span class="cita-dx-desc">${esc(it.descripcion || '-')}</span>
+                        ${it.valorLab ? `<span class="lab-pill">Lab: ${esc(it.valorLab)}</span>` : ''}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderTablaCitasDia(citas) {
+  return `
+    <div class="table-wrap">
+      <table class="prod-clean-table sortable-table">
+        <thead>
+          <tr>
+            <th style="min-width: 90px;">Cita / Turno</th>
+            <th style="min-width: 220px;">Paciente</th>
+            <th style="min-width: 200px;">Profesional de Salud</th>
+            <th style="min-width: 150px;">Servicio (UPS)</th>
+            <th style="min-width: 260px;">Diagnósticos / Procedimientos</th>
+            <th style="min-width: 110px; text-align: right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${citas.map(cita => {
+            const fullName = cita.nombrePaciente || 'Sin nombre registrado';
+            const docPac = cita.documentoPaciente || cita.idPaciente || '-';
+            const turnoDesc = cita.turno === 'M' ? 'Mañana' : cita.turno === 'T' ? 'Tarde' : cita.turno === 'N' ? 'Noche' : (cita.turno || '-');
+            const edadLabel = cita.edad !== null && cita.edad !== undefined ? `${cita.edad} ${cita.tipoEdad === 'M' ? 'm' : 'a'}` : '';
+
+            return `
+              <tr>
+                <td>
+                  <strong>#${esc(cita.idCita || '-')}</strong>
+                  <div class="table-sub-text">Turno ${esc(turnoDesc)}</div>
+                </td>
+                <td>
+                  <button type="button" class="btn-cell-link patient-cell-btn" onclick="abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)">
+                    ${esc(fullName)} ↗
+                  </button>
+                  <div class="table-sub-text">DNI: ${esc(docPac)} ${edadLabel ? `· ${esc(edadLabel)}` : ''}</div>
+                </td>
+                <td>
+                  <button type="button" class="btn-cell-link personal-cell-btn" onclick="abrirPersonalDesdeResultados('${escJs(cita.nombrePersonal)}', event)">
+                    ${esc(cita.nombrePersonal || 'No registrado')} ↗
+                  </button>
+                  <div class="table-sub-text">${esc(cita.profesion || '-')}</div>
+                </td>
+                <td>
+                  <span class="service-chip">${esc(cita.servicio || '-')}</span>
+                  <div class="table-sub-text">${esc(cita.financiador || '')}</div>
+                </td>
+                <td>
+                  <div class="table-dx-list">
+                    ${cita.items.map(it => {
+                      const td = (it.tipoDiagnostico || '').toUpperCase().trim();
+                      const tipoLabel = td === 'D' ? 'D' : td === 'P' ? 'P' : td === 'R' ? 'R' : td;
+                      const tipoClass = td === 'D' ? 'badge-definitivo' : td === 'P' ? 'badge-presuntivo' : td === 'R' ? 'badge-repetido' : 'badge-neutral';
+                      return `
+                        <div class="table-dx-row">
+                          <span class="dx-tipo-tag ${tipoClass}" title="${td === 'D' ? 'Definitivo' : td === 'P' ? 'Presuntivo' : 'Repetido'}">${esc(tipoLabel)}</span>
+                          <span class="code-badge font-bold" style="cursor:pointer;" onclick="abrirModalActividadCodigo('${escJs(it.codigo)}', '${escJs(it.descripcion || '')}', event)">
+                            ${esc(it.codigo || '-')}
+                          </span>
+                          <span class="table-dx-desc" title="${esc(it.descripcion || '')}">${esc(it.descripcion || '-')}</span>
+                          ${it.valorLab ? `<span class="lab-pill">Lab: ${esc(it.valorLab)}</span>` : ''}
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                </td>
+                <td style="text-align: right;">
+                  <button type="button" class="btn btn-secondary btn-xs" onclick="abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)" title="Ver historia clínica del paciente">
+                    Historia
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPaginacionDia(totalPages, currentPage) {
+  const pagEl = document.getElementById('diaPagination');
+  if (!pagEl) return;
+
+  if (totalPages <= 1) {
+    pagEl.style.display = 'none';
+    return;
+  }
+
+  pagEl.style.display = 'flex';
+
+  let html = `
+    <button type="button" class="prod-pag-btn" onclick="irAPaginaDia(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} title="Página anterior">
+      ← Anterior
+    </button>
+  `;
+
+  const delta = 2;
+  const range = [];
+  for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
+    range.push(i);
+  }
+
+  if (currentPage - delta > 2) {
+    range.unshift('...');
+  }
+  range.unshift(1);
+
+  if (currentPage + delta < totalPages - 1) {
+    range.push('...');
+  }
+  if (totalPages > 1) {
+    range.push(totalPages);
+  }
+
+  range.forEach(p => {
+    if (p === '...') {
+      html += `<span class="prod-pag-ellipsis">...</span>`;
+    } else {
+      const isActive = p === currentPage;
+      html += `
+        <button type="button" class="prod-pag-btn ${isActive ? 'active' : ''}" onclick="irAPaginaDia(${p})">
+          ${p}
+        </button>
+      `;
+    }
+  });
+
+  html += `
+    <button type="button" class="prod-pag-btn" onclick="irAPaginaDia(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} title="Página siguiente">
+      Siguiente →
+    </button>
+  `;
+
+  pagEl.innerHTML = html;
+}
+
+function cerrarApartadoCitasDia() {
+  const sec = document.getElementById('apartadoCitasDia');
+  if (sec) sec.style.display = 'none';
+  const container = document.getElementById('reporteMeses');
+  if (container) {
+    container.querySelectorAll('.vbar-col.is-selected').forEach(c => c.classList.remove('is-selected'));
+  }
+}
+window.cerrarApartadoCitasDia = cerrarApartadoCitasDia;
+
+function volverAlGraficoProd() {
+  const graf = document.getElementById('reporteTendenciaTitle') || document.getElementById('reporteMeses');
+  if (graf) {
+    graf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+window.volverAlGraficoProd = volverAlGraficoProd;
+
+async function exportarCitasDia(formato) {
+  const citas = estadoDiaDetalle.citasFiltradas || [];
+  const fecha = estadoDiaDetalle.fechaIso || 'dia';
+
+  if (!citas.length) {
+    if (typeof toast === 'function') toast('No hay citas en este día para exportar.', 'info');
+    return;
+  }
+
+  const filas = [];
+  citas.forEach(c => {
+    const codigos = (c.items || []).map(i => i.codigo).filter(Boolean).join(', ');
+    const descripciones = (c.items || []).map(i => `${i.codigo} (${i.tipoLabel || ''}): ${i.descripcion}`).join('; ');
+    filas.push([
+      c.idCita || '',
+      c.fecha || fecha,
+      c.turno === 'M' ? 'Mañana' : c.turno === 'T' ? 'Tarde' : c.turno === 'N' ? 'Noche' : (c.turno || ''),
+      c.nombrePaciente || '',
+      c.documentoPaciente || '',
+      c.historiaClinica || '',
+      c.edad !== null && c.edad !== undefined ? `${c.edad} ${c.tipoEdad || 'A'}` : '',
+      c.genero || '',
+      c.nombrePersonal || '',
+      c.profesion || '',
+      c.servicio || '',
+      c.establecimiento || '',
+      c.financiador || '',
+      codigos,
+      descripciones
+    ]);
+  });
+
+  const columnas = [
+    { titulo: 'N° Cita', tipo: 'numero' },
+    { titulo: 'Fecha', tipo: 'fecha' },
+    { titulo: 'Turno' },
+    { titulo: 'Paciente' },
+    { titulo: 'DNI / Doc' },
+    { titulo: 'Historia Clínica' },
+    { titulo: 'Edad' },
+    { titulo: 'Género' },
+    { titulo: 'Médico / Personal' },
+    { titulo: 'Profesión' },
+    { titulo: 'Servicio (UPS)' },
+    { titulo: 'Establecimiento' },
+    { titulo: 'Financiador' },
+    { titulo: 'Códigos CIE/CPMS', tipo: 'codigo' },
+    { titulo: 'Diagnósticos y Procedimientos' }
+  ];
+
+  const doc = {
+    titulo: `Citas Médicas del Día — ${fecha}`,
+    subtitulo: `Hospital Regional de Ayacucho · ${formatNumber(citas.length)} citas atendidas`,
+    archivo: `citas-${fecha}`,
+    datos: [
+      ['Fecha', fecha],
+      ['Total de citas', formatNumber(citas.length)],
+      ['Establecimiento', citas[0]?.establecimiento || 'Hospital Regional de Ayacucho']
+    ],
+    metricas: [
+      { etiqueta: 'Citas Atendidas', valor: citas.length },
+      { etiqueta: 'Pacientes Únicos', valor: new Set(citas.map(c => c.idPaciente).filter(Boolean)).size },
+      { etiqueta: 'Personal de Salud', valor: new Set(citas.map(c => c.idPersonal).filter(Boolean)).size }
+    ],
+    secciones: [
+      {
+        titulo: `Listado de citas del día (${fecha})`,
+        hoja: 'Citas del Día',
+        columnas,
+        filas
+      }
+    ]
+  };
+
+  try {
+    if (typeof exportarDocumento === 'function') {
+      await exportarDocumento(formato, doc);
+      return;
+    }
+
+    if (formato === 'pdf' && typeof generarPdf === 'function') {
+      await generarPdf(doc);
+      if (typeof toast === 'function') toast('Reporte PDF descargado.', 'success');
+      return;
+    }
+
+    if (typeof generarExcel === 'function') {
+      await generarExcel(doc);
+      if (typeof toast === 'function') toast('Reporte Excel descargado.', 'success');
+      return;
+    }
+
+    // Fallback CSV en caso de no cargar librería
+    let csv = '\uFEFF';
+    csv += columnas.map(c => `"${c.titulo}"`).join(',') + '\r\n';
+    filas.forEach(f => {
+      csv += f.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(',') + '\r\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `citas-${fecha}.csv`;
+    link.click();
+    if (typeof toast === 'function') toast('Archivo CSV descargado.', 'success');
+  } catch (e) {
+    console.error('Error al exportar citas del día:', e);
+    if (typeof toast === 'function') toast('No se pudo generar la descarga: ' + e.message, 'error');
+  }
+}
+window.exportarCitasDia = exportarCitasDia;
+
+
 function renderMatrizEstablecimientos(tableId, establecimientos, totalCitas) {
   const table = document.getElementById(tableId);
   if (!table) return;
@@ -3520,7 +4314,6 @@ function renderMatrizEstablecimientos(tableId, establecimientos, totalCitas) {
   }
 }
 
-// Muestra píldoras de filtros activos con botón de eliminar
 function actualizarBarraFiltrosActivos(f) {
   const bar = document.getElementById('prodFiltrosActivosBar');
   if (!bar) return;
@@ -3574,7 +4367,6 @@ function removerFiltroActivo(idx) {
   }
 }
 
-// Limpia todos los filtros de producción
 function limpiarFiltrosProduccion() {
   sv('prodFiltroAnio', '2026');
   sv('prodFiltroMes', '');
@@ -3604,9 +4396,6 @@ function aplicarFiltroRapidoProd(tipo, val) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-
-// Alterna las pestañas internas del espacio de trabajo de Producción
 function cambiarTabProduccion(tabId) {
   const tabs = ['tendencia', 'tratamientos', 'personal'];
   tabs.forEach(t => {
@@ -3620,7 +4409,6 @@ function cambiarTabProduccion(tabId) {
   });
 }
 
-// Filtro rápido instantáneo sobre la tabla de tratamientos cargada
 function filtrarTablaTratamientosLocal(q) {
   const term = (q || '').trim().toLowerCase();
   const rows = document.querySelectorAll('#reporteDiagnosticosTabla tbody tr');
@@ -3630,7 +4418,6 @@ function filtrarTablaTratamientosLocal(q) {
   });
 }
 
-// Filtro rápido instantáneo sobre la tabla de personal cargada
 function filtrarTablaPersonalLocal(q) {
   const term = (q || '').trim().toLowerCase();
   const rows = document.querySelectorAll('#reportePersonalTabla tbody tr');
@@ -3640,14 +4427,12 @@ function filtrarTablaPersonalLocal(q) {
   });
 }
 
-// ── ORDENAMIENTO INTERACTIVO DE TABLAS DE PRODUCCIÓN (DE MENOR A MAYOR TOCANDO TÍTULOS) ──
-
 function ordenarTablaProdDiagnosticos(col) {
   if (sortStateProd.diag.col === col) {
     sortStateProd.diag.dir = sortStateProd.diag.dir === 'asc' ? 'desc' : 'asc';
   } else {
     sortStateProd.diag.col = col;
-    sortStateProd.diag.dir = 'asc'; // Siempre de menor a mayor al primer toque
+    sortStateProd.diag.dir = 'asc';
   }
   aplicarOrdenDiagnosticosYRender();
 }
@@ -3728,7 +4513,7 @@ function ordenarTablaProdPersonal(col) {
     sortStateProd.pers.dir = sortStateProd.pers.dir === 'asc' ? 'desc' : 'asc';
   } else {
     sortStateProd.pers.col = col;
-    sortStateProd.pers.dir = 'asc'; // De menor a mayor primero
+    sortStateProd.pers.dir = 'asc';
   }
   aplicarOrdenPersonalYRender();
 }
@@ -3810,7 +4595,7 @@ function ordenarTablaProdEstablecimientos(col) {
     sortStateProd.estab.dir = sortStateProd.estab.dir === 'asc' ? 'desc' : 'asc';
   } else {
     sortStateProd.estab.col = col;
-    sortStateProd.estab.dir = 'asc'; // De menor a mayor primero
+    sortStateProd.estab.dir = 'asc';
   }
   aplicarOrdenEstablecimientosYRender();
 }
@@ -3854,8 +4639,6 @@ function aplicarOrdenEstablecimientosYRender() {
   renderMatrizEstablecimientos('reporteMatrizEstablecimientos', reporteEstablecimientosRows, totalCitasReporteActual);
 }
 
-// Reporte de producción completo (cifras, tendencia, establecimientos, tratamientos y personal de salud) en Excel o PDF,
-// con los filtros elegidos en la barra de Producción. Se registra en «exportadores» al cargar la página.
 const MESES_PROD = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 async function exportarProduccion(formato, boton) {
   if (!reporteData?.data) { showAlert('Espera a que se calcule la producción antes de exportar.', 'info'); return; }
@@ -4236,7 +5019,8 @@ async function revisarSinadef(documento) {
 
 // ── Personal ──
 
-async function buscarPersonal() {
+// Se busca en todos los datos; modo 'id' lo usan solo los accesos que abren la ficha de un profesional por su ID.
+async function buscarPersonal({ modo = 'todo' } = {}) {
   const q = gv('qPersonal');
   if (!q) { toast('Escribe un ID, documento o nombre.', 'info'); document.getElementById('qPersonal').focus(); return; }
   // La ficha vive en la pestaña «Buscar personal» (se llega aquí también desde Producción o la búsqueda avanzada).
@@ -4244,38 +5028,120 @@ async function buscarPersonal() {
   const seq = ++searchSeq.personal;
   estadoBusqueda('resPersonal', 'Buscando personal…');
   try {
-    const rows = await apiFetch(`/busqueda/personal?modo=${encodeURIComponent(gv('modoPersonal') || 'todo')}&q=${encodeURIComponent(q)}`);
+    const rows = await apiFetch(`/busqueda/personal?modo=${encodeURIComponent(modo)}&q=${encodeURIComponent(q)}`);
     if (seq !== searchSeq.personal) return;
     busquedaState.personal = rows;
     if (rows.length === 1) renderFichaPersonal(rows[0], false);
-    else renderListaCoincidencias('personal', rows);
+    else if (rows.length) renderListaPersonal(rows);
+    else { pfQuitarDeUrl(); estadoBusqueda('resPersonal', 'No se encontró personal con ese dato.'); }
   } catch (error) {
     if (seq === searchSeq.personal) estadoBusqueda('resPersonal', error.message || 'No se pudo buscar.', 'error');
   }
 }
 
+// Años completos desde una fecha (edad o antigüedad); null si la fecha no es válida.
+function aniosDesde(valor) {
+  const f = /^\d{4}-\d{2}-\d{2}/.test(String(valor || '')) ? String(valor).slice(0, 10) : '';
+  if (!f) return null;
+  const [y, m, d] = f.split('-').map(Number);
+  const hoy = new Date();
+  let anios = hoy.getFullYear() - y;
+  if (hoy.getMonth() + 1 < m || (hoy.getMonth() + 1 === m && hoy.getDate() < d)) anios -= 1;
+  return anios >= 0 ? anios : null;
+}
+
+const PF_ICONO = {
+  documento: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.5"/><path d="M14 10h4M14 14h3"/>',
+  nacimiento: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  colegio: '<path d="m3 9 9-5 9 5-9 5z"/><path d="M7 11v5c3 2 7 2 10 0v-5"/>',
+  colegiatura: '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>',
+  condicion: '<rect x="4" y="7" width="16" height="13" rx="2"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/>',
+  alta: '<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/>',
+  lugar: '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+  atenciones: '<path d="M9 3h6v4H9z"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><path d="M9 13h6M9 17h4"/>',
+  reporte: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'
+};
+const pfIcono = (nombre, tam = 16) => `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PF_ICONO[nombre]}</svg>`;
+const pfNombre = x => histCasoNombre(nombrePersonal(x), { siglas: false }) || 'Personal sin nombre';
+
+// Lista de profesionales encontrados: una tarjeta por persona con profesión, documento y estado.
+function renderListaPersonal(rows) {
+  pfQuitarDeUrl();
+  const el = document.getElementById('resPersonal');
+  el.innerHTML = `<div class="pf-lista-head">
+      <h3>${rows.length >= 100 ? 'Mostramos los primeros 100 profesionales' : `Encontramos ${formatNumber(rows.length)} profesionales`}</h3>
+      <p>${rows.length >= 100 ? 'Escribe un dato más específico (DNI o apellidos) para acotar. ' : ''}Elige uno para ver su ficha.</p>
+    </div>
+    <ul class="pf-lista">${rows.map((x, i) => {
+      const nombre = pfNombre(x);
+      return `<li><button type="button" class="pf-item" data-index="${i}">
+        <span class="pf-avatar" aria-hidden="true">${esc(histIniciales(nombre))}</span>
+        <span class="pf-item-text">
+          <strong>${esc(nombre)}</strong>
+          <span class="pf-item-prof">${esc(x.Profesion ? histCasoNombre(x.Profesion) : 'Profesión no registrada')}</span>
+          <small>${[`DNI ${x.Numero_Documento_Personal || '—'}`, `ID ${x.Id_Personal ?? '—'}`, x.Establecimiento ? histCasoNombre(x.Establecimiento) : ''].filter(Boolean).map(esc).join(' · ')}</small>
+        </span>
+        <span class="pf-estado${x.Fecha_Baja ? ' off' : ''}">${x.Fecha_Baja ? 'De baja' : 'Activo'}</span>
+      </button></li>`;
+    }).join('')}</ul>`;
+  el.querySelectorAll('.pf-item').forEach(b => b.addEventListener('click', () => renderFichaPersonal(rows[Number(b.dataset.index)], rows.length > 1)));
+}
+
+// Muestra la pestaña «atenciones» o «reporte» de la ficha del personal.
+function pfMostrarPanel(nombre) {
+  document.querySelectorAll('[data-pf-tab]').forEach(b => {
+    const activa = b.dataset.pfTab === nombre;
+    b.classList.toggle('on', activa);
+    b.setAttribute('aria-selected', String(activa));
+  });
+  document.querySelectorAll('[data-pf-panel]').forEach(p => { p.hidden = p.dataset.pfPanel !== nombre; });
+}
+
+// Id del profesional con la ficha abierta; la ficha queda en la URL (#personal/Id_Personal) para volver a ella al recargar.
+let personalFichaId = null;
+function pfQuitarDeUrl() {
+  personalFichaId = null;
+  if (partesUrl()[0] === 'personal' && location.hash !== '#personal') history.pushState(null, '', '#personal');
+}
+
 function renderFichaPersonal(x, conVolver) {
   const el = document.getElementById('resPersonal');
+  personalFichaId = x.Id_Personal ?? null;
+  const destino = `#personal/${encodeURIComponent(x.Id_Personal ?? '')}`;
+  const enPersonal = document.getElementById('view-personal')?.classList.contains('active');
+  if (personalFichaId !== null && enPersonal && location.hash !== destino) history.pushState(null, '', destino);
   const nombre = nombrePersonal(x) || 'Personal';
-  const iniciales = nombre.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
-  const dato = (titulo, valor) => `<div class="pf-dato"><dt>${titulo}</dt><dd>${valor ? esc(valor) : '<span class="pf-nd">Sin dato</span>'}</dd></div>`;
+  const nombreVisible = pfNombre(x);
+  const edad = aniosDesde(x.Fecha_Nacimiento_Personal);
+  const antiguedad = aniosDesde(x.Fecha_Alta);
+  const dato = (icono, titulo, valor, detalle = '') => `<div class="pf-dato">
+      <span class="pf-dato-ico">${pfIcono(icono)}</span>
+      <div><dt>${titulo}</dt><dd>${valor ? esc(valor) : '<span class="pf-nd">Sin dato</span>'}</dd>${detalle ? `<small>${esc(detalle)}</small>` : ''}</div>
+    </div>`;
+  const anios = n => (n === null ? '' : `${n} ${n === 1 ? 'año' : 'años'}`);
   el.innerHTML = `<div class="card ficha pf-ficha">
-    <div class="pf-head">
-      ${conVolver ? '<button type="button" class="btn btn-ghost btn-sm pf-back" data-back title="Volver a los resultados">←</button>' : ''}
-      <span class="pf-avatar" aria-hidden="true">${esc(iniciales || nombre.charAt(0))}</span>
+    <div class="pf-banner">
+      ${conVolver ? '<button type="button" class="btn btn-ghost btn-sm pf-back" data-back title="Volver a los resultados" aria-label="Volver a los resultados">←</button>' : ''}
+      <span class="pf-avatar pf-avatar-grande" aria-hidden="true">${esc(histIniciales(nombreVisible))}</span>
       <div class="pf-id">
-        <h3>${esc(nombre)}</h3>
-        <div class="pf-meta">${x.Profesion ? `<span class="pf-prof">${esc(x.Profesion)}</span>` : ''}<span>DNI ${esc(x.Numero_Documento_Personal || '—')}</span><span>ID ${esc(x.Id_Personal ?? '—')}</span></div>
+        <h3>${esc(nombreVisible)}</h3>
+        <div class="pf-meta">
+          ${x.Profesion ? `<span class="pf-prof">${esc(histCasoNombre(x.Profesion))}</span>` : ''}
+          ${x.Establecimiento ? `<span class="pf-meta-item">${pfIcono('lugar', 13)}${esc(histCasoNombre(x.Establecimiento))}</span>` : ''}
+        </div>
       </div>
-      ${x.Fecha_Baja ? `<span class="ficha-pill ficha-pill-off">De baja desde ${esc(formatearValor(x.Fecha_Baja))}</span>` : '<span class="ficha-pill">Activo</span>'}
+      <div class="pf-banner-der">
+        <span class="pf-estado${x.Fecha_Baja ? ' off' : ''}">${x.Fecha_Baja ? `De baja desde ${esc(formatearValor(x.Fecha_Baja))}` : 'Activo'}</span>
+        <span class="pf-ids">DNI <b>${esc(x.Numero_Documento_Personal || '—')}</b> · ID <b>${esc(x.Id_Personal ?? '—')}</b></span>
+      </div>
     </div>
     <dl class="pf-datos">
-      ${dato('Nacimiento', formatearValor(x.Fecha_Nacimiento_Personal))}
-      ${dato('Colegio', x.Colegio)}
-      ${dato('Colegiatura', x.Numero_Colegiatura)}
-      ${dato('Condición', x.Condicion)}
-      ${dato('Establecimiento', x.Establecimiento)}
-      ${dato('Fecha de alta', formatearValor(x.Fecha_Alta))}
+      ${dato('documento', 'Documento', x.Numero_Documento_Personal)}
+      ${dato('nacimiento', 'Nacimiento', formatearValor(x.Fecha_Nacimiento_Personal), anios(edad))}
+      ${dato('colegio', 'Colegio', x.Colegio ? histCasoNombre(x.Colegio) : '')}
+      ${dato('colegiatura', 'Colegiatura', x.Numero_Colegiatura)}
+      ${dato('condicion', 'Condición', x.Condicion ? histCasoNombre(x.Condicion) : '')}
+      ${dato('alta', 'Fecha de alta', formatearValor(x.Fecha_Alta), antiguedad === null ? '' : `${anios(antiguedad)} en el registro`)}
     </dl>
     <details class="pf-mas"><summary>Ver todos los datos del profesional</summary>
       <h4 class="ficha-section">Datos personales</h4>
@@ -4283,20 +5149,28 @@ function renderFichaPersonal(x, conVolver) {
       <h4 class="ficha-section">Información laboral</h4>
       ${factGrid(x, ['Profesion', 'Colegio', 'Numero_Colegiatura', 'Condicion', 'Establecimiento', 'Fecha_Alta', 'Fecha_Baja'])}
     </details>
-    <div class="ficha-dos-col">
-      <section class="ficha-col">
-        <div class="ficha-col-head">
-          <h4 class="ficha-section">Atenciones registradas</h4>
-          <button type="button" class="btn btn-primary btn-sm" data-atenciones>Ver atenciones</button>
-        </div>
-        <div class="ficha-atenciones" id="fichaPersonalAtenciones"><div class="ficha-col-vacio">Pulsa «Ver atenciones» para cargar las atenciones de este profesional.</div></div>
-      </section>
-      <section class="ficha-col">
-        ${reporteMensualHtml(x)}
-      </section>
+    <div class="pf-tabs" role="tablist" aria-label="Información del profesional">
+      <button type="button" class="pf-tab on" role="tab" aria-selected="true" data-pf-tab="atenciones">${pfIcono('atenciones', 15)} Atenciones</button>
+      <button type="button" class="pf-tab" role="tab" aria-selected="false" data-pf-tab="reporte">${pfIcono('reporte', 15)} Reporte mensual</button>
     </div>
+    <section class="pf-panel" role="tabpanel" data-pf-panel="atenciones">
+      <div class="pf-panel-head"><h4>Atenciones registradas</h4><button type="button" class="btn btn-primary btn-sm" data-atenciones>Ver atenciones</button></div>
+      <div class="ficha-atenciones" id="fichaPersonalAtenciones">
+        <div class="pf-cta">
+          <span class="pf-cta-ico">${pfIcono('atenciones', 22)}</span>
+          <div>
+            <strong>Atenciones registradas por este profesional</strong>
+            <p>Verás un resumen (pacientes, servicios, diagnósticos y procedimientos más frecuentes) y cada atención con su paciente. Pulsa «Ver atenciones»; se cargan las 1 000 más recientes.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="pf-panel" role="tabpanel" data-pf-panel="reporte" hidden>
+      ${reporteMensualHtml(x)}
+    </section>
   </div>`;
-  el.querySelector('[data-back]')?.addEventListener('click', () => renderListaCoincidencias('personal', busquedaState.personal));
+  el.querySelector('[data-back]')?.addEventListener('click', () => renderListaPersonal(busquedaState.personal));
+  el.querySelectorAll('[data-pf-tab]').forEach(b => b.addEventListener('click', () => pfMostrarPanel(b.dataset.pfTab)));
   el.querySelector('[data-atenciones]').addEventListener('click', event => cargarAtencionesFicha(event.currentTarget, `/busqueda/atenciones?personal=${encodeURIComponent(x.Id_Personal)}`, 'fichaPersonalAtenciones', 'personal',
     'Reporte de atenciones del personal de salud', [
       ['Personal de salud', nombre], ['DNI', x.Numero_Documento_Personal], ['ID personal', x.Id_Personal],
@@ -4321,9 +5195,9 @@ async function abrirFichaPersonal(id, { reporte = false } = {}) {
   }
   showView('personal');
   sv('qPersonal', String(id));
-  sv('modoPersonal', 'id');
-  await buscarPersonal();
+  await buscarPersonal({ modo: 'id' });
   if (reporte && document.getElementById('rmGenerar')) {
+    pfMostrarPanel('reporte');
     document.getElementById('reporteMensual').scrollIntoView({ behavior: 'smooth', block: 'start' });
     generarReporteMensual(document.getElementById('rmGenerar').dataset.id);
   }
@@ -4345,29 +5219,60 @@ const NOTAS_REPORTE = [
 ];
 let reporteMensualPreferido = null;
 
-function reporteMensualHtml(x) {
+// El mismo reporte sirve para el personal (lo que atendió) y para el paciente (lo que recibió).
+// Cada tipo usa sus propios ids para que ambos puedan estar en la página a la vez.
+const RM_TIPOS = {
+  personal: {
+    pre: 'rm', seccion: 'reporteMensual', titulo: 'Reporte mensual de producción', idDe: x => x.Id_Personal, ruta: 'personal',
+    cargando: 'Calculando la producción del mes…', vacio: 'No hay atenciones registradas por este profesional en el mes elegido.',
+    exportTitulo: 'Reporte de producción del personal de salud', archivo: 'produccion-personal', exportador: 'reporteMensual'
+  },
+  paciente: {
+    pre: 'rmp', seccion: 'reporteMensualPaciente', titulo: 'Reporte mensual de atenciones', idDe: x => x.Id_Paciente, ruta: 'pacientes',
+    cargando: 'Calculando las atenciones del mes…', vacio: 'Este paciente no tiene atenciones registradas en el mes elegido.',
+    exportTitulo: 'Reporte mensual de atenciones del paciente', archivo: 'atenciones-paciente', exportador: 'reporteMensualPaciente'
+  }
+};
+const tipoReporteMensual = data => (data.paciente ? 'paciente' : 'personal');
+
+function reporteMensualHtml(x, tipo = 'personal', preferido = null) {
+  const cfg = RM_TIPOS[tipo];
   const hoy = new Date();
-  const pref = reporteMensualPreferido || { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
+  const pref = preferido || (tipo === 'personal' && reporteMensualPreferido) || { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
   const anios = Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i);
-  return `<section class="monthly-report" id="reporteMensual">
-    <h4 class="ficha-section">Reporte mensual de producción</h4>
+  return `<section class="monthly-report" id="${cfg.seccion}">
+    <h4 class="ficha-section">${cfg.titulo}</h4>
     <div class="monthly-controls">
-      <label class="label">Año<select class="input" id="rmAnio">${anios.map(a => `<option value="${a}"${a === pref.anio ? ' selected' : ''}>${a}</option>`).join('')}</select></label>
-      <label class="label">Mes<select class="input" id="rmMes">${MESES_NOMBRE.map((m, i) => `<option value="${i + 1}"${i + 1 === pref.mes ? ' selected' : ''}>${m}</option>`).join('')}</select></label>
-      <button type="button" class="btn btn-primary" id="rmGenerar" data-id="${esc(x.Id_Personal)}">Generar reporte</button>
+      <label class="label">Año<select class="input" id="${cfg.pre}Anio">${anios.map(a => `<option value="${a}"${a === pref.anio ? ' selected' : ''}>${a}</option>`).join('')}</select></label>
+      <label class="label">Mes<select class="input" id="${cfg.pre}Mes">${MESES_NOMBRE.map((m, i) => `<option value="${i + 1}"${i + 1 === pref.mes ? ' selected' : ''}>${m}</option>`).join('')}</select></label>
+      <button type="button" class="btn btn-primary" id="${cfg.pre}Generar" data-id="${esc(cfg.idDe(x))}">Generar reporte</button>
+      <button type="button" class="btn btn-secondary" id="${cfg.pre}Limpiar" data-anio="${pref.anio}" data-mes="${pref.mes}" onclick="limpiarReporteMensual('${tipo}')" title="Borra el reporte generado y vuelve al año y mes iniciales">Limpiar</button>
     </div>
-    <div id="rmResultado"></div>
+    <div id="${cfg.pre}Resultado"></div>
   </section>`;
 }
 
-async function generarReporteMensual(id) {
-  const target = document.getElementById('rmResultado');
-  const anio = Number(gv('rmAnio'));
-  const mes = Number(gv('rmMes'));
-  reporteMensualPreferido = { anio, mes };
-  target.innerHTML = '<div class="table-empty">Calculando la producción del mes…</div>';
+// Quita el reporte generado y deja el año y mes con que se abrió la ficha.
+function limpiarReporteMensual(tipo = 'personal') {
+  const cfg = RM_TIPOS[tipo];
+  const boton = document.getElementById(`${cfg.pre}Limpiar`);
+  if (!boton) return;
+  sv(`${cfg.pre}Anio`, boton.dataset.anio);
+  sv(`${cfg.pre}Mes`, boton.dataset.mes);
+  if (tipo === 'personal') reporteMensualPreferido = null;
+  delete exportadores[cfg.exportador];
+  document.getElementById(`${cfg.pre}Resultado`).innerHTML = '';
+}
+
+async function generarReporteMensual(id, tipo = 'personal') {
+  const cfg = RM_TIPOS[tipo];
+  const target = document.getElementById(`${cfg.pre}Resultado`);
+  const anio = Number(gv(`${cfg.pre}Anio`));
+  const mes = Number(gv(`${cfg.pre}Mes`));
+  if (tipo === 'personal') reporteMensualPreferido = { anio, mes };
+  target.innerHTML = `<div class="table-empty">${cfg.cargando}</div>`;
   try {
-    const data = await apiFetch(`/busqueda/personal/${encodeURIComponent(id)}/reporte-mensual?anio=${anio}&mes=${mes}`);
+    const data = await apiFetch(`/busqueda/${cfg.ruta}/${encodeURIComponent(id)}/reporte-mensual?anio=${anio}&mes=${mes}`);
     renderReporteMensual(data);
   } catch (error) {
     target.innerHTML = `<div class="search-state search-state-error">${esc(error.message || 'No se pudo calcular el reporte.')}</div>`;
@@ -4441,6 +5346,22 @@ function spansReporte(filas, claves) {
 }
 
 function encabezadoReporteMensual(data) {
+  if (data.paciente) {
+    const p = data.paciente;
+    const nombre = [p.Apellido_Paterno_Paciente, p.Apellido_Materno_Paciente, p.Nombres_Paciente].map(v => String(v ?? '').trim()).filter(Boolean).join(' ');
+    const servicios = [...new Set(data.filas.map(f => f.servicio).filter(Boolean))];
+    const est = data.establecimiento;
+    return {
+      nombre,
+      datos: [
+        ['Año', data.anio], ['Mes', MESES_NOMBRE[data.mes - 1].toUpperCase()],
+        ['Establecimiento', est ? `${est.renipress ? `${String(est.renipress).padStart(8, '0')} - ` : ''}${est.nombre || est.id}` : null],
+        ['Paciente', nombre], ['DNI', p.Numero_Documento_Paciente], ['Historia clínica', p.Historia_Clinica],
+        ['Fecha de nacimiento', p.Fecha_Nacimiento_Paciente ? formatIsoDate(String(p.Fecha_Nacimiento_Paciente).slice(0, 10)) : null],
+        ['Sexo', SEXO[String(p.Id_Genero ?? '').trim()] || p.Id_Genero], ['Servicios', servicios.join(', ')]
+      ]
+    };
+  }
   const p = data.personal || {};
   const nombre = [p.Apellido_Paterno_Personal, p.Apellido_Materno_Personal, p.Nombres_Personal].filter(Boolean).join(' ');
   const servicios = [...new Set(data.filas.map(f => f.servicio).filter(Boolean))];
@@ -4459,7 +5380,8 @@ function encabezadoReporteMensual(data) {
 }
 
 function renderReporteMensual(data) {
-  const target = document.getElementById('rmResultado');
+  const cfg = RM_TIPOS[tipoReporteMensual(data)];
+  const target = document.getElementById(`${cfg.pre}Resultado`);
   const { dias, totales, filas } = armarReporteMensual(data);
   const head = encabezadoReporteMensual(data);
   const spans = spansReporte(filas, ['upss', 'servicio']);
@@ -4474,25 +5396,26 @@ function renderReporteMensual(data) {
     return `<tr class="${f.esTotal ? 'rm-grand' : ''}${inicioGrupo ? ' rm-group-start' : ''}">${upss}${servicio}<td class="rm-act">${esc(f.actividad)}</td><td class="rm-turno">${esc(f.turno || '')}</td>${celdas(f.valores)}<td class="rm-num rm-total">${f.total}</td></tr>`;
   }).join('');
 
-  exportadores.reporteMensual = (formato, boton) => exportarReporteMensual(formato, boton, data);
+  exportadores[cfg.exportador] = (formato, boton) => exportarReporteMensual(formato, boton, data);
   target.innerHTML = `
     <dl class="rm-head">${head.datos.filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-    ${data.filas.length ? `<div class="result-toolbar"><p class="result-summary">Atenciones: ${formatNumber(totales[0].total)} · Aten. con proc.: ${formatNumber(totales[1].total)} · Procedimientos CPMS: ${formatNumber(totales[2].total)}</p>${botonesExportarHtml('reporteMensual')}</div>
+    ${data.filas.length ? `<div class="result-toolbar"><p class="result-summary">Atenciones: ${formatNumber(totales[0].total)} · Aten. con proc.: ${formatNumber(totales[1].total)} · Procedimientos CPMS: ${formatNumber(totales[2].total)}</p>${botonesExportarHtml(cfg.exportador)}</div>
     <div class="table-wrap rm-wrap"><table class="rm-table">
       <thead><tr><th>UPSS</th><th>SERVICIO</th><th>ACTIVIDADES</th><th>TURNO</th>${encabezadoDias}<th class="rm-num">TOTAL</th></tr></thead>
       <tbody>${cuerpo}</tbody>
     </table></div>
     <ul class="rm-notes">${NOTAS_REPORTE.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`
-    : '<div class="table-empty">No hay atenciones registradas por este profesional en el mes elegido.</div>'}`;
+    : `<div class="table-empty">${cfg.vacio}</div>`}`;
 }
 
 function exportarReporteMensual(formato, boton, data) {
+  const cfg = RM_TIPOS[tipoReporteMensual(data)];
   const { dias, filas } = armarReporteMensual(data);
   const head = encabezadoReporteMensual(data);
   return exportarDocumento(formato, {
-    titulo: 'Reporte de producción del personal de salud',
+    titulo: cfg.exportTitulo,
     datos: head.datos,
-    archivo: `produccion-personal-${data.anio}-${String(data.mes).padStart(2, '0')}-${head.nombre}`,
+    archivo: `${cfg.archivo}-${data.anio}-${String(data.mes).padStart(2, '0')}-${head.nombre}`,
     orientacion: 'landscape',
     notas: NOTAS_REPORTE,
     secciones: [{
@@ -4519,14 +5442,15 @@ function renderAtencionesFicha(target) {
   const box = document.getElementById(target);
   if (!estado || !box) return;
   const { rows, contexto, desde, hasta } = estado;
-  if (!rows.length) { box.innerHTML = renderGruposPorFecha(rows, contexto, 1000); return; }
+  if (!rows.length) { box.innerHTML = '<div class="table-empty">No hay atenciones registradas.</div>'; return; }
   const filtradas = filtrarAtencionesPorFecha(rows, { desde, hasta });
   const fechas = rows.map(fechaAtencionDe).filter(Boolean).sort();
   const filtroActivo = desde || hasta;
   // En la ficha del personal no hay filtro de fechas: para eso está su búsqueda avanzada.
   const conFiltroFecha = contexto !== 'personal';
-  box.innerHTML = `<div class="ficha-filter ate-toolbar">
-      ${conFiltroFecha ? `<div class="ate-tool-group">
+  // Arriba, el filtro de fechas (en la ficha del paciente); debajo, el historial compartido con su búsqueda y exportación.
+  box.innerHTML = `${conFiltroFecha ? `<div class="ficha-filter ate-toolbar">
+      <div class="ate-tool-group">
         <span class="ate-tool-title">Filtrar por fecha</span>
         <div class="ate-tool-row">
           <label class="label">Desde<input class="input" type="date" data-ff="desde" value="${esc(desde)}" min="${fechas[0] || ''}" max="${fechas[fechas.length - 1] || ''}"></label>
@@ -4534,15 +5458,17 @@ function renderAtencionesFicha(target) {
           <button type="button" class="btn btn-primary btn-sm" data-ff="aplicar">Aplicar</button>
           ${filtroActivo ? '<button type="button" class="btn btn-secondary btn-sm" data-ff="quitar">Ver todas</button>' : ''}
         </div>
-      </div>` : ''}
-      <div class="ate-tool-group ate-tool-export">
-        <span class="ate-tool-title">${filtroActivo ? 'Exportar el periodo' : 'Exportar todas'}</span>
-        <div class="ate-tool-row">${botonesExportarHtml(target)}</div>
       </div>
-    </div>
+    </div>` : ''}
     ${filtroActivo ? `<p class="result-summary">${esc(describirFiltroFecha({ desde, hasta }))} ${formatNumber(filtradas.length)} de ${formatNumber(rows.length)} registro(s).</p>` : ''}
-    ${filtradas.length ? renderGruposPorFecha(filtradas, contexto, 1000, target) : '<div class="table-empty">No hay atenciones en ese periodo.</div>'}`;
-  activarGrupos(target, filtradas);
+    ${filtradas.length ? `<div id="${target}Hist"></div>` : '<div class="table-empty">No hay atenciones en ese periodo.</div>'}`;
+  if (filtradas.length) {
+    histMontar(`${target}Hist`, filtradas, {
+      contexto,
+      avisoHtml: rows.length >= 1000 ? '<p class="ps-tip">Se muestran las 1 000 anotaciones más recientes.</p>' : '',
+      exportar: { clave: target, titulo: estado.titulo, datos: estado.datos, archivo: estado.archivo, filtroBase: () => ({ desde: estado.desde, hasta: estado.hasta }) }
+    });
+  }
   box.querySelector('[data-ff="aplicar"]')?.addEventListener('click', () => {
     const nuevoDesde = box.querySelector('[data-ff="desde"]').value;
     const nuevoHasta = box.querySelector('[data-ff="hasta"]').value;
@@ -4563,9 +5489,7 @@ async function cargarAtencionesFicha(button, path, target, contexto, titulo = 'A
   try {
     const rows = await apiFetch(path);
     if (seq !== searchSeq.ficha) return;
-    fichaAtenciones[target] = { rows, contexto, desde: '', hasta: '' };
-    registrarExportAtenciones(target, rows, titulo, datos, contexto === 'paciente' ? 'atenciones-paciente' : 'atenciones-personal',
-      () => ({ desde: fichaAtenciones[target]?.desde || '', hasta: fichaAtenciones[target]?.hasta || '' }));
+    fichaAtenciones[target] = { rows, contexto, desde: '', hasta: '', titulo, datos, archivo: contexto === 'paciente' ? 'atenciones-paciente' : 'atenciones-personal' };
     renderAtencionesFicha(target);
     button.textContent = 'Actualizar atenciones';
     button.classList.replace('btn-primary', 'btn-secondary');
@@ -4582,7 +5506,7 @@ async function buscarAtenciones() {
   const hasta = gv('hastaAtenciones');
   if (!q && !desde && !hasta) { toast('Escribe un dato o elige un rango de fechas.', 'info'); document.getElementById('qAtenciones').focus(); return; }
   if (desde && hasta && desde > hasta) { toast('La fecha «Desde» no puede ser posterior a «Hasta».', 'error'); return; }
-  const params = new URLSearchParams({ modo: gv('modoAtenciones') || 'todos', q });
+  const params = new URLSearchParams({ modo: 'todos', q });
   if (desde) params.set('desde', desde);
   if (hasta) params.set('hasta', hasta);
   const seq = ++searchSeq.atenciones;
@@ -4592,110 +5516,25 @@ async function buscarAtenciones() {
     if (seq !== searchSeq.atenciones) return;
     const el = document.getElementById('resAtenciones');
     if (!rows.length) { estadoBusqueda('resAtenciones', 'No se encontraron atenciones con esos datos.'); return; }
-    const modoTexto = document.getElementById('modoAtenciones')?.selectedOptions[0]?.textContent || 'Todos los datos';
-    registrarExportAtenciones('atenciones', rows, 'Reporte de atenciones', [['Búsqueda', q], ['Buscar en', q ? modoTexto : null], ['Desde', desde ? formatIsoDate(desde) : null], ['Hasta', hasta ? formatIsoDate(hasta) : null], rows.length >= 200 ? ['Nota', 'Se incluyen las 200 atenciones más recientes'] : null].filter(Boolean), 'atenciones');
-    el.innerHTML = `<div class="result-toolbar"><p class="result-summary">${formatNumber(rows.length)} registro(s)${rows.length >= 200 ? ' · se muestran los 200 más recientes; acota con fechas o un dato más específico' : ''}</p>${botonesExportarHtml('atenciones')}</div>${renderGruposPorFecha(rows, 'busqueda', 200, 'atenciones')}`;
-    activarGrupos('resAtenciones', rows);
+    el.innerHTML = `<p class="result-summary">${formatNumber(rows.length)} registro(s)${rows.length >= 200 ? ' · se muestran los 200 más recientes; acota con fechas o un dato más específico' : ''}</p><div id="resAtencionesHist"></div>`;
+    histMontar('resAtencionesHist', rows, {
+      contexto: 'busqueda',
+      exportar: {
+        clave: 'atenciones', titulo: 'Reporte de atenciones', archivo: 'atenciones',
+        datos: [['Búsqueda', q], ['Desde', desde ? formatIsoDate(desde) : null], ['Hasta', hasta ? formatIsoDate(hasta) : null], rows.length >= 200 ? ['Nota', 'Se incluyen las 200 atenciones más recientes'] : null].filter(Boolean)
+      }
+    });
   } catch (error) {
     if (seq === searchSeq.atenciones) estadoBusqueda('resAtenciones', error.message || 'No se pudo buscar.', 'error');
   }
 }
 
-// Agrupa las atenciones por fecha (la más reciente primero); la primera fecha queda abierta.
-// Con «clave», cada fecha muestra botones para exportar solo las atenciones de ese día.
+// Insignia del tipo de diagnóstico (la usa la búsqueda nominal).
 const DX_TIPOS = { D: ['Definitivo', 'dx-d'], P: ['Presuntivo', 'dx-p'], R: ['Repetido', 'dx-r'] };
-const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const ICONO_PERSONA = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
-const ICONO_OJO = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
-
 function dxBadgeHtml(dx) {
   if (!dx) return '<span class="ate-dx ate-dx-vacio">—</span>';
   const [nombre, clase] = DX_TIPOS[dx.toUpperCase()] || [dx, 'dx-r'];
   return `<span class="ate-dx ${clase}" title="Tipo de diagnóstico: ${esc(nombre)}">${esc(dx)}</span>`;
-}
-
-function renderGruposPorFecha(rows, contexto, limite, clave = '') {
-  if (!rows.length) return '<div class="table-empty">No hay atenciones registradas.</div>';
-  const grupos = new Map();
-  rows.forEach((row, index) => {
-    const key = /^\d{4}-\d{2}-\d{2}/.test(String(row.Fecha_Atencion || '')) ? String(row.Fecha_Atencion).slice(0, 10) : 'Sin fecha';
-    if (!grupos.has(key)) grupos.set(key, []);
-    grupos.get(key).push(index);
-  });
-  const fechas = [...grupos.keys()].sort((a, b) => (a === 'Sin fecha') - (b === 'Sin fecha') || b.localeCompare(a));
-  const aviso = contexto !== 'busqueda' && rows.length >= limite ? `<p class="result-summary">Se muestran las ${formatNumber(limite)} atenciones más recientes.</p>` : '';
-  const totalCitas = new Set(rows.map((r, i) => String(r.Id_Cita ?? r.Cita ?? `__${i}`))).size;
-  const chip = (n, uno, varios) => `<span class="ate-stat"><strong>${formatNumber(n)}</strong> ${n === 1 ? uno : varios}</span>`;
-  const resumen = contexto !== 'busqueda'
-    ? `<div class="ate-stats">${chip(totalCitas, 'atención', 'atenciones')}${chip(rows.length, 'registro', 'registros')}${chip(fechas.length, 'fecha', 'fechas')}</div>`
-    : '';
-  return `${resumen}${aviso}<div class="date-groups ate-timeline">${fechas.map((fecha, groupIndex) => {
-    const indices = grupos.get(fecha);
-    let calendario = '<span class="ate-cal ate-cal-vacio">?</span>';
-    let titulo = 'Sin fecha';
-    if (fecha !== 'Sin fecha') {
-      const [y, m, d] = fecha.split('-').map(Number);
-      const dia = new Date(y, m - 1, d);
-      calendario = `<span class="ate-cal"><span class="ate-cal-mes">${MESES_CORTO[m - 1]}</span><span class="ate-cal-dia">${String(d).padStart(2, '0')}</span></span>`;
-      titulo = `<span class="ate-fecha-dia">${DIAS_SEMANA[dia.getDay()]}</span> ${fecha.split('-').reverse().join('/')}`;
-    }
-    // Una tarjeta por atención (cita) con todos sus códigos; los registros sin cita quedan sueltos.
-    const porCita = new Map();
-    indices.forEach(rowIndex => {
-      const cita = rows[rowIndex].Id_Cita ?? rows[rowIndex].Cita;
-      const key = cita === undefined || cita === null || cita === '' ? `__${rowIndex}` : String(cita);
-      if (!porCita.has(key)) porCita.set(key, []);
-      porCita.get(key).push(rowIndex);
-    });
-    const items = [...porCita.values()].map((grupo, n) => {
-      const row = rows[grupo[0]];
-      const cita = row.Id_Cita ?? row.Cita;
-      const quienEtiqueta = contexto === 'paciente' ? 'Atendió' : 'Paciente';
-      const quienValor = contexto === 'paciente' ? row.Personal : (row.Paciente || row.Id_Paciente);
-      const codigos = grupo.map(ix => {
-        const r = rows[ix];
-        const codigo = String(r.Codigo_Item ?? '').trim();
-        const dx = String(r.Tipo_Diagnostico ?? '').trim();
-        const lab = String(r.Valor_Lab ?? '').trim();
-        return `<div class="ate-cod-row" role="row">
-          <span role="cell">${codigo ? `<span class="code-badge">${esc(codigo)}</span>` : '<span class="ate-dx-vacio">—</span>'}</span>
-          <span role="cell" class="ate-cod-desc">${esc(r.DescItem || 'Sin descripción')}</span>
-          <span role="cell">${dxBadgeHtml(dx)}</span>
-          <span role="cell">${lab ? `<span class="ate-lab">LAB ${esc(lab)}</span>` : ''}</span>
-        </div>`;
-      }).join('');
-      return `<li class="ate-card">
-        <div class="ate-card-head">
-          <span class="ate-num" title="Atención ${n + 1} del día">${n + 1}</span>
-          <div class="ate-card-id">
-            <div class="ate-card-title">${cita ? `Cita <span class="ate-cita">${esc(cita)}</span>` : 'Registro sin cita'}</div>
-            ${row.Servicio ? `<span class="ate-serv">${esc(row.Servicio)}</span>` : ''}
-          </div>
-          <div class="ate-card-actions">${cita ? botonesCitaHtml(cita) : ''}<button type="button" class="btn btn-secondary btn-sm ate-ver" data-row="${grupo[0]}">${ICONO_OJO} Ver atención</button></div>
-        </div>
-        <div class="ate-cods" role="table" aria-label="Códigos registrados">
-          <div class="ate-cod-row ate-cod-head" role="row"><span role="columnheader">Código</span><span role="columnheader">Descripción</span><span role="columnheader">Dx</span><span role="columnheader">Lab</span></div>
-          ${codigos}
-        </div>
-        ${quienValor ? `<div class="ate-who">${ICONO_PERSONA}<span>${quienEtiqueta}:</span> <strong>${esc(quienValor)}</strong></div>` : ''}
-      </li>`;
-    }).join('');
-    const nCitas = porCita.size;
-    return `<details class="date-group ate-day">
-      <summary>${calendario}
-        <span class="ate-day-text"><span class="date-label">${titulo}</span>
-        <span class="date-count">${nCitas} ${nCitas === 1 ? 'atención' : 'atenciones'} · ${indices.length} ${indices.length === 1 ? 'registro' : 'registros'}</span></span>
-        <span class="ate-chevron" aria-hidden="true"></span></summary>
-      <ul class="date-entries ate-cards">${items}</ul>
-    </details>`;
-  }).join('')}</div>`;
-}
-
-function activarGrupos(target, rows) {
-  document.getElementById(target).querySelectorAll('[data-row]').forEach(button => {
-    button.addEventListener('click', () => verAtencion(rows[Number(button.dataset.row)]));
-  });
 }
 
 // El detalle de una atención (verAtencion) está en js/atencion-detalle.js.
@@ -4716,6 +5555,7 @@ function setupBusquedas() {
     form.addEventListener('submit', event => { event.preventDefault(); buscar(); });
     form.addEventListener('reset', () => {
       document.getElementById(resultId).innerHTML = '';
+      if (formId === 'formPersonal') pfQuitarDeUrl();
       setTimeout(() => form.querySelector('input[type="search"]').focus(), 0);
     });
   });
@@ -5237,129 +6077,354 @@ function parseLocalDate(value) {
 const HOME_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const HOME_MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-// Buscador de pacientes y accesos a los módulos.
+// Meses con citas, el mes elegido en el gráfico y la fecha de la última atención registrada.
+let homeMonths = [];
+let homeSelectedIdx = -1;
+let homeUltimaAtencionFecha = '';
+
+// Buscador de pacientes y accesos directos
 function setupHomeView() {
   const form = document.getElementById('homeSearchForm');
-  if (!form) return;
-  form.addEventListener('submit', event => {
-    event.preventDefault();
-    const texto = gv('homeSearchInput');
-    showView('pacientes');
-    if (texto) buscarPacienteSimple(texto);
+  if (form && !form.dataset.bound) {
+    form.dataset.bound = 'true';
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const texto = gv('homeSearchInput');
+      showView('pacientes');
+      if (texto) buscarPacienteSimple(texto);
+    });
+  }
+
+  const btnReset = document.getElementById('homeBtnResetMes');
+  if (btnReset && !btnReset.dataset.bound) {
+    btnReset.dataset.bound = 'true';
+    btnReset.addEventListener('click', () => {
+      if (homeMonths.length) {
+        selectHomeMonth(homeMonths.length - 1);
+      }
+    });
+  }
+
+  document.getElementById('homeBtnVerProduccion')?.addEventListener('click', event => {
+    irAProduccionMes(event.currentTarget.dataset.anio, event.currentTarget.dataset.mes);
   });
+
+  // Los enlaces (#pacientes) también se pueden abrir en otra pestaña; aquí se navega sin recargar.
   document.querySelectorAll('#view-inicio [data-go]').forEach(button => {
-    button.addEventListener('click', () => showView(button.dataset.go));
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      showView(button.dataset.go);
+    });
   });
 }
 
-// Saludo, cifras generales y citas por mes (mismos datos del resumen analítico).
+// Saludo, cifras generales y citas por mes (mismos datos del resumen analítico del dashboard)
 async function cargarInicio() {
   const hour = new Date().getHours();
-  const firstName = String(currentUser?.fullName || '').trim().split(/\s+/)[0] || '';
+  const firstName = String(currentUser?.fullName || currentUser?.username || '').trim().split(/\s+/)[0] || '';
   const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
-  document.getElementById('homeGreeting').textContent = firstName ? `${greeting}, ${firstName}` : greeting;
-  document.getElementById('homeImportar').hidden = currentUser?.role !== 'admin';
+  const greetEl = document.getElementById('homeGreeting');
+  if (greetEl) {
+    greetEl.textContent = firstName ? `${greeting}, ${firstName}` : greeting;
+  }
+
+  const impLink = document.getElementById('homeImportar');
+  if (impLink) {
+    impLink.hidden = currentUser?.role !== 'admin';
+  }
 
   try {
     const data = await apiFetch('/consultas/dashboard');
     const resumen = data.resumen || {};
-    document.getElementById('homePacientes').textContent = formatNumber(resumen.pacientesRegistrados);
-    document.getElementById('homeAtenciones').textContent = formatNumber(resumen.atenciones);
-    // Citas del último mes con registros, su comparación con el mes anterior y la tendencia de los últimos meses.
-    const meses = (Array.isArray(data.evolucion) ? data.evolucion : [])
-      .filter(row => /^\d{4}-\d{2}$/.test(String(row.label || ''))).sort((x, y) => String(x.label).localeCompare(String(y.label)))
+    homeUltimaAtencionFecha = resumen.ultimaAtencion || '';
+
+    const elPac = document.getElementById('homePacientes');
+    if (elPac) elPac.textContent = formatNumber(resumen.pacientesRegistrados || 0);
+
+    const elAte = document.getElementById('homeAtenciones');
+    if (elAte) elAte.textContent = formatNumber(resumen.atenciones || 0);
+
+    // Citas por mes ordenadas cronológicamente
+    homeMonths = (Array.isArray(data.evolucion) ? data.evolucion : [])
+      .filter(row => /^\d{4}-\d{2}$/.test(String(row.label || '')))
+      .sort((x, y) => String(x.label).localeCompare(String(y.label)))
       .map(row => ({ label: row.label, value: Number(row.value) || 0 }));
-    renderHomeResumenMes(meses);
+
+    homeSelectedIdx = homeMonths.length - 1;
+
+    // Actualiza freshness
+    const elFresh = document.getElementById('homeFreshness');
     if (resumen.ultimaAtencion) {
       const last = parseLocalDate(resumen.ultimaAtencion);
-      document.getElementById('homeUltima').textContent = last.toLocaleDateString('es-PE');
-      document.getElementById('homeFreshness').textContent = `Datos actualizados hasta el ${last.getDate()} de ${HOME_MONTHS_LONG[last.getMonth()]} de ${last.getFullYear()}`;
+      if (elFresh) {
+        elFresh.textContent = `Datos actualizados hasta el ${last.getDate()} de ${HOME_MONTHS_LONG[last.getMonth()]} de ${last.getFullYear()}`;
+      }
     } else {
-      document.getElementById('homeUltima').textContent = '—';
-      document.getElementById('homeFreshness').textContent = 'Todavía no hay producción registrada. Usa «Importar datos» para cargarla.';
+      if (elFresh) {
+        elFresh.textContent = 'Todavía no hay producción registrada. Usa «Importar datos» para cargarla.';
+      }
     }
-    renderHomeChart(Array.isArray(data.evolucion) ? data.evolucion : []);
+
+    renderHomeResumenMes(homeMonths, homeSelectedIdx);
+    renderHomeChart(homeMonths, homeSelectedIdx);
   } catch (error) {
-    document.getElementById('homeFreshness').textContent = 'No se pudieron consultar los datos. Revisa la conexión con la API en Configuración.';
-    document.getElementById('homeChart').innerHTML = `<div class="table-empty">${esc(error.message)}</div>`;
+    const elFresh = document.getElementById('homeFreshness');
+    if (elFresh) {
+      elFresh.textContent = 'No se pudieron consultar los datos. Revisa la conexión con la API en Configuración.';
+    }
+    const chartEl = document.getElementById('homeChart');
+    if (chartEl) {
+      chartEl.innerHTML = `<div class="table-empty">${esc(error.message || 'Error de conexión')}</div>`;
+    }
   }
 }
 
-function renderHomeResumenMes(meses) {
-  const ultimo = meses[meses.length - 1];
+// Cambia el mes seleccionado de forma reactiva y actualiza la tarjeta superior y el gráfico
+function selectHomeMonth(index) {
+  if (!homeMonths.length || index < 0 || index >= homeMonths.length) return;
+  homeSelectedIdx = index;
+  renderHomeResumenMes(homeMonths, homeSelectedIdx);
+
+  // Actualiza clases y atributos en las barras existentes sin recargar todo el DOM
+  const barCols = document.querySelectorAll('#homeChart .home-bar-col');
+  barCols.forEach((col, idx) => {
+    const isSelected = idx === homeSelectedIdx;
+    const isLast = idx === homeMonths.length - 1;
+    col.classList.toggle('is-selected', isSelected);
+    col.setAttribute('aria-pressed', String(isSelected));
+    const valEl = col.querySelector('.home-bar-value');
+    if (valEl) {
+      valEl.textContent = isSelected || isLast ? formatNumber(homeMonths[idx].value) : '';
+    }
+  });
+
+  // Actualiza la nota y el badge de estado del gráfico
+  const selected = homeMonths[homeSelectedIdx];
+  const [anio, mes] = selected.label.split('-').map(Number);
+  const isLast = homeSelectedIdx === homeMonths.length - 1;
+  const noteEl = document.getElementById('homeChartNote');
+  const badgeEl = document.getElementById('homeChartBadge');
+
+  if (noteEl) {
+    noteEl.textContent = isLast
+      ? 'Últimos meses con registros en NProduccion · Haz clic en cualquier barra para seleccionarla'
+      : `Mostrando cifras de ${HOME_MONTHS_LONG[mes - 1]} ${anio}. Haz clic en otro mes para comparar.`;
+  }
+
+  if (badgeEl) {
+    badgeEl.style.display = 'inline-flex';
+    badgeEl.textContent = `${HOME_MONTHS[mes - 1].toUpperCase()} ${anio}: ${formatNumber(selected.value)} citas`;
+  }
+}
+
+function renderHomeResumenMes(meses, selectedIdx = -1) {
+  if (!meses.length) return;
+  const idx = selectedIdx >= 0 && selectedIdx < meses.length ? selectedIdx : meses.length - 1;
+  const selected = meses[idx];
+  const isLast = idx === meses.length - 1;
+
   const trend = document.getElementById('homeMesTrend');
   const spark = document.getElementById('homeSpark');
-  if (!ultimo) {
-    document.getElementById('homeMes').textContent = '—';
-    trend.textContent = '';
-    spark.innerHTML = '';
+  const elMes = document.getElementById('homeMes');
+  const elMesLabel = document.getElementById('homeMesLabel');
+  const btnProduccion = document.getElementById('homeBtnVerProduccion');
+  const btnReset = document.getElementById('homeBtnResetMes');
+
+  if (!selected) {
+    if (elMes) elMes.textContent = '—';
+    if (trend) trend.textContent = '';
+    if (spark) spark.innerHTML = '';
     return;
   }
-  const [anio, mes] = ultimo.label.split('-').map(Number);
-  document.getElementById('homeMes').textContent = formatNumber(ultimo.value);
-  document.getElementById('homeMesLabel').textContent = `Citas atendidas en ${HOME_MONTHS_LONG[mes - 1]} ${anio}`;
+
+  const [anio, mes] = selected.label.split('-').map(Number);
+  if (elMes) elMes.textContent = formatNumber(selected.value);
+
   const hoy = new Date();
   const enCurso = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1;
-  const anterior = meses[meses.length - 2];
-  trend.className = 'hh-trend';
-  if (enCurso) {
-    trend.textContent = 'Mes en curso';
-  } else if (anterior && anterior.value) {
-    const cambio = Math.round(((ultimo.value - anterior.value) / anterior.value) * 100);
-    trend.textContent = `${cambio >= 0 ? '▲' : '▼'} ${Math.abs(cambio)} % frente a ${HOME_MONTHS_LONG[Number(anterior.label.slice(5)) - 1]}`;
-    trend.classList.add(cambio >= 0 ? 'sube' : 'baja');
-  } else {
-    trend.textContent = '';
+  const anterior = meses[idx - 1];
+  const mesLargo = HOME_MONTHS_LONG[mes - 1];
+  if (elMesLabel) elMesLabel.textContent = `Citas atendidas · ${mesLargo} ${anio}`;
+
+  // Un mes en curso todavía no se puede comparar con uno completo: se indica sin porcentaje.
+  if (trend) {
+    trend.className = 'hh-trend';
+    trend.title = '';
+    if (enCurso) {
+      trend.textContent = 'Mes en curso';
+      trend.classList.add('en-curso');
+    } else if (anterior && anterior.value) {
+      const cambio = Math.round(((selected.value - anterior.value) / anterior.value) * 100);
+      const mesAnterior = HOME_MONTHS_LONG[Number(anterior.label.slice(5)) - 1];
+      trend.textContent = `${cambio > 0 ? '▲' : cambio < 0 ? '▼' : '='} ${Math.abs(cambio)} % vs. ${mesAnterior}`;
+      trend.title = `${formatNumber(anterior.value)} citas en ${mesAnterior}`;
+      trend.classList.add(cambio > 0 ? 'sube' : cambio < 0 ? 'baja' : 'igual');
+    } else {
+      trend.textContent = 'Primer mes registrado';
+    }
   }
-  // Minigráfico de los últimos meses (el mes en curso se dibuja punteado porque aún no termina).
-  const ultimos = meses.slice(-8);
-  // Se escala entre el mes más bajo y el más alto (los meses completos) para que se note la tendencia.
-  const completos = enCurso && ultimos.length > 2 ? ultimos.slice(0, -1) : ultimos;
-  const max = Math.max(...completos.map(m => m.value), 1);
-  const min = Math.min(...completos.map(m => m.value));
-  const rango = Math.max(max - min, max * 0.05, 1);
-  const paso = ultimos.length > 1 ? 220 / (ultimos.length - 1) : 220;
-  const puntos = ultimos.map((m, i) => [ultimos.length > 1 ? i * paso : 110, Math.min(54, Math.max(4, 48 - ((m.value - min) / rango) * 40))]);
-  const linea = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-  const cerrados = enCurso && puntos.length > 1 ? puntos.slice(0, -1) : puntos;
-  spark.innerHTML = `<defs><linearGradient id="hhSparkFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f2c4e3" stop-opacity=".45"/><stop offset="1" stop-color="#f2c4e3" stop-opacity="0"/></linearGradient></defs>
-    ${cerrados.length > 1 ? `<path d="${linea(cerrados)} L${cerrados[cerrados.length - 1][0].toFixed(1)} 56 L0 56 Z" fill="url(#hhSparkFill)"/>` : ''}
-    <path d="${linea(cerrados)}" fill="none" stroke="#f2c4e3" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-    ${enCurso && puntos.length > 1 ? `<path d="${linea(puntos.slice(-2))}" fill="none" stroke="#f2c4e3" stroke-width="2.4" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>` : ''}`;
+
+  // Pie: hasta qué día hay datos del mes elegido.
+  const pie = document.getElementById('homeFootWrap');
+  if (pie) {
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const ultima = isLast && homeUltimaAtencionFecha ? parseLocalDate(homeUltimaAtencionFecha) : null;
+    pie.innerHTML = ultima
+      ? `Última atención registrada: <b>${esc(ultima.toLocaleDateString('es-PE'))}</b>`
+      : `Mes completo · <b>del 1 al ${ultimoDia} de ${esc(mesLargo)}</b>`;
+  }
+
+  // Actualiza el botón de acceso directo a Producción con los filtros de año y mes seleccionados
+  if (btnProduccion) {
+    btnProduccion.dataset.anio = anio;
+    btnProduccion.dataset.mes = mes;
+    btnProduccion.title = `Ver análisis detallado de producción de ${mesLargo} ${anio}`;
+    const txt = btnProduccion.querySelector('span');
+    if (txt) txt.textContent = `Ver producción de ${HOME_MONTHS[mes - 1]} ${anio}`;
+  }
+
+  if (btnReset) {
+    btnReset.hidden = isLast;
+  }
+
+  if (spark) renderHomeSpark(spark, meses, idx);
 }
 
-// Barras de un solo tono: el mes más reciente en morado intenso y rotulado; los demás muestran su valor al pasar el cursor.
-function renderHomeChart(rows) {
+// Minigráfico de 8 meses alrededor del elegido. La línea es SVG estirado al ancho; los puntos y los meses
+// son HTML para que se vean redondos. El mes en curso no entra en la escala para no aplanar la línea.
+function renderHomeSpark(spark, meses, idx) {
+  const desde = Math.max(0, Math.min(meses.length - 8, idx - 4));
+  const tramo = meses.slice(desde, desde + 8);
+  if (tramo.length < 2) { spark.innerHTML = ''; return; }
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  const cerrados = tramo.filter(m => m.label !== mesActual);
+  const escala = (cerrados.length ? cerrados : tramo).map(m => m.value);
+  const max = Math.max(...escala, 1);
+  const min = Math.min(...escala);
+  const rango = Math.max(max - min, max * 0.04, 1);
+  // x e y en porcentaje del área del gráfico (y = 0 arriba); los extremos dejan margen para los puntos.
+  const pts = tramo.map((m, i) => ({
+    ...m,
+    x: 5 + (i * 90) / (tramo.length - 1),
+    y: Math.min(96, Math.max(8, 86 - ((m.value - min) / rango) * 74)),
+    enCurso: m.label === mesActual
+  }));
+  const linea = lista => lista.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+  const completos = pts.filter(p => !p.enCurso);
+  const ultimoCompleto = completos[completos.length - 1];
+  const enCurso = pts.find(p => p.enCurso);
+  spark.innerHTML = `
+    <div class="hh-spark-plot">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="hhSparkFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f2c4e3" stop-opacity=".38"/><stop offset="1" stop-color="#f2c4e3" stop-opacity="0"/></linearGradient></defs>
+        ${completos.length > 1 ? `<path d="${linea(completos)} L${ultimoCompleto.x.toFixed(2)} 100 L${completos[0].x.toFixed(2)} 100 Z" fill="url(#hhSparkFill)"/>
+        <path d="${linea(completos)}" fill="none" stroke="#f2c4e3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>` : ''}
+        ${enCurso && ultimoCompleto ? `<path d="${linea([ultimoCompleto, enCurso])}" fill="none" stroke="#f2c4e3" stroke-width="2" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>` : ''}
+      </svg>
+      ${pts.map((p, i) => `<button type="button" class="hh-spark-pt${desde + i === idx ? ' is-sel' : ''}${p.enCurso ? ' en-curso' : ''}" style="left:${p.x}%;top:${p.y}%" data-i="${desde + i}" tabindex="-1" aria-hidden="true" title="${esc(`${HOME_MONTHS_LONG[Number(p.label.slice(5)) - 1]} ${p.label.slice(0, 4)}: ${formatNumber(p.value)} citas`)}"></button>`).join('')}
+    </div>
+    <div class="hh-spark-meses" aria-hidden="true">${pts.map((p, i) => `<span class="${desde + i === idx ? 'is-sel' : ''}" style="left:${p.x}%">${esc(HOME_MONTHS[Number(p.label.slice(5)) - 1])}</span>`).join('')}</div>`;
+  spark.querySelectorAll('.hh-spark-pt').forEach(b => b.addEventListener('click', () => selectHomeMonth(Number(b.dataset.i))));
+}
+
+// Barras interactivas: al hacer clic en cualquiera se selecciona y actualiza la tarjeta superior
+function renderHomeChart(rows, selectedIdx = -1) {
   const target = document.getElementById('homeChart');
+  if (!target) return;
+
   const months = rows
     .map(row => ({ label: String(row.label || ''), value: Number(row.value) || 0 }))
     .filter(row => /^\d{4}-\d{2}$/.test(row.label))
     .sort((a, b) => a.label.localeCompare(b.label));
+
   if (!months.length) {
     target.innerHTML = '<div class="table-empty">Aún no hay citas registradas.</div>';
     return;
   }
+
+  const activeIdx = selectedIdx >= 0 && selectedIdx < months.length ? selectedIdx : months.length - 1;
   const max = Math.max(...months.map(row => row.value), 1);
   const describe = row => {
     const [year, month] = row.label.split('-').map(Number);
-    return { short: HOME_MONTHS[month - 1], long: `${HOME_MONTHS_LONG[month - 1]} ${year}` };
+    return { short: HOME_MONTHS[month - 1], long: `${HOME_MONTHS_LONG[month - 1]} ${year}`, year, month };
   };
+
   const summary = months.map(row => `${describe(row).long}: ${formatNumber(row.value)}`).join('; ');
-  // El mes en curso tiene menos citas porque aún no termina; se aclara para que no parezca una caída.
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  document.getElementById('homeChartNote').textContent = months[months.length - 1].label === currentMonth
-    ? `Últimos meses con registros. ${HOME_MONTHS_LONG[now.getMonth()][0].toUpperCase()}${HOME_MONTHS_LONG[now.getMonth()].slice(1)} está en curso.`
-    : 'Últimos meses con registros en NProduccion';
-  target.innerHTML = `<div class="home-bars" role="img" aria-label="Citas atendidas por mes. ${esc(summary)}">${months.map((row, index) => {
+  const selectedMonthInfo = describe(months[activeIdx]);
+  const isLastSelected = activeIdx === months.length - 1;
+
+  const noteEl = document.getElementById('homeChartNote');
+  if (noteEl) {
+    noteEl.textContent = isLastSelected
+      ? 'Últimos meses con registros en NProduccion · Haz clic en cualquier barra para seleccionarla'
+      : `Mostrando cifras de ${selectedMonthInfo.long}. Haz clic en otro mes para comparar.`;
+  }
+
+  const badgeEl = document.getElementById('homeChartBadge');
+  if (badgeEl) {
+    badgeEl.style.display = 'inline-flex';
+    badgeEl.textContent = `${selectedMonthInfo.short.toUpperCase()} ${selectedMonthInfo.year}: ${formatNumber(months[activeIdx].value)} citas`;
+  }
+
+  target.innerHTML = `<div class="home-bars" role="region" aria-label="Citas atendidas por mes. ${esc(summary)}">${months.map((row, index) => {
     const names = describe(row);
+    const isSelected = index === activeIdx;
     const isLast = index === months.length - 1;
-    return `<div class="home-bar-col${isLast ? ' is-last' : ''}" tabindex="0" data-tip="${esc(`${names.long}: ${formatNumber(row.value)} citas`)}">
-      <span class="home-bar-value">${isLast ? formatNumber(row.value) : ''}</span>
-      <span class="home-bar-track"><span class="home-bar" style="height:${Math.max(2, row.value / max * 100)}%"></span></span>
+    const isVisibleValue = isSelected || isLast;
+    return `<div class="home-bar-col${isSelected ? ' is-selected' : ''}${isLast ? ' is-last' : ''}"
+      tabindex="0"
+      role="button"
+      aria-label="Seleccionar ${names.long}, ${formatNumber(row.value)} citas"
+      aria-pressed="${isSelected ? 'true' : 'false'}"
+      data-index="${index}"
+      data-tip="${esc(`${names.long}: ${formatNumber(row.value)} citas (clic para seleccionar)`)}">
+      <span class="home-bar-track" style="--alto:${Math.max(3, (row.value / max) * 100)}%">
+        <span class="home-bar-value">${isVisibleValue ? formatNumber(row.value) : ''}</span>
+        <span class="home-bar"></span>
+      </span>
       <span class="home-bar-label">${esc(names.short)}</span>
     </div>`;
   }).join('')}</div>`;
+
+  // Asigna eventos de clic, teclado y doble clic a cada barra
+  target.querySelectorAll('.home-bar-col').forEach(col => {
+    const idx = Number(col.dataset.index);
+    col.addEventListener('click', () => {
+      selectHomeMonth(idx);
+    });
+    col.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectHomeMonth(idx);
+      }
+    });
+    col.addEventListener('dblclick', () => {
+      const row = months[idx];
+      if (row) {
+        const [y, m] = row.label.split('-').map(Number);
+        irAProduccionMes(y, m);
+      }
+    });
+  });
+}
+
+// Año y mes que Producción debe aplicar al abrirse (desde Inicio). Se aplican antes de la primera
+// carga para no pedir dos reportes a la vez.
+let produccionPendiente = null;
+function irAProduccionMes(anio, mes) {
+  if (!anio || !mes) { showView('reportes'); return; }
+  produccionPendiente = { anio: String(anio), mes: String(mes) };
+  showView('reportes');
+}
+async function abrirVistaProduccion() {
+  const pendiente = produccionPendiente;
+  produccionPendiente = null;
+  if (!pendiente) { inicializarFiltrosProduccion(); cargarReportes(); return; }
+  await inicializarFiltrosProduccion();
+  sv('prodFiltroAnio', pendiente.anio);
+  sv('prodFiltroMes', pendiente.mes);
+  cargarReportes();
 }
 
 // ═══════════════════════════════════════

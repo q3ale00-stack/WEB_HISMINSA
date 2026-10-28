@@ -21,18 +21,28 @@ const DESCRIPCION_ITEM = `
 const NOMBRE_PACIENTE = `NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(pac.Apellido_Paterno_Paciente)), ' ', LTRIM(RTRIM(pac.Apellido_Materno_Paciente)), ' ', LTRIM(RTRIM(pac.Nombres_Paciente))))), '')`;
 const NOMBRE_PERSONAL = `NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(per.Apellido_Paterno_Personal)), ' ', LTRIM(RTRIM(per.Apellido_Materno_Personal)), ' ', LTRIM(RTRIM(per.Nombres_Personal))))), '')`;
 
-// Columnas de una atención con los nombres del paciente y del personal y la descripción del código.
+// Columnas de una atención con los nombres del paciente y del personal, la descripción del código
+// y, para los historiales, el DNI y sexo del paciente, la profesión del personal, el financiador y el establecimiento.
+// Los catálogos se leen con TOP (1) para no duplicar filas si repiten un código.
 const SELECT_ATENCION = `
   n.*,
   ${NOMBRE_PACIENTE} AS Paciente,
+  pac.Numero_Documento_Paciente AS DocumentoPaciente,
+  pac.Id_Genero AS SexoPaciente,
   ${NOMBRE_PERSONAL} AS Personal,
   c.Descripcion_Item AS DescItem,
-  ups.Descripcion_Ups AS Servicio
+  ups.Descripcion_Ups AS Servicio,
+  prof.Descripcion_Profesion AS ProfesionPersonal,
+  fin.Descripcion_Financiador AS Financiador,
+  est.Nombre_Establecimiento AS NombreEstablecimiento
   FROM NProduccion n
   LEFT JOIN MaestroPaciente pac ON n.Id_Paciente = pac.Id_Paciente
   LEFT JOIN MaestroPersonal per ON n.Id_Personal = per.Id_Personal
   ${DESCRIPCION_ITEM}
-  OUTER APPLY (SELECT TOP (1) u.Descripcion_Ups FROM MAESTRO_HIS_UPS u WHERE u.Id_Ups = n.Id_Ups) ups`;
+  OUTER APPLY (SELECT TOP (1) u.Descripcion_Ups FROM MAESTRO_HIS_UPS u WHERE u.Id_Ups = n.Id_Ups) ups
+  OUTER APPLY (SELECT TOP (1) p.Descripcion_Profesion FROM MAESTRO_HIS_PROFESION p WHERE p.Id_Profesion = per.Id_Profesion) prof
+  OUTER APPLY (SELECT TOP (1) f.Descripcion_Financiador FROM MAESTRO_HIS_FINANCIADOR f WHERE f.Id_Financiador = n.Id_Financiador) fin
+  OUTER APPLY (SELECT TOP (1) e.Nombre_Establecimiento FROM MAESTRO_HIS_ESTABLECIMIENTO e WHERE e.Id_Establecimiento = n.Id_Establecimiento) est`;
 
 const SELECT_PERSONAL = `
   p.*,
@@ -113,19 +123,22 @@ const buscarPacientes = async (req, res) => {
   }
 };
 
-// GET /api/busqueda/pacientes/sugerencias?q=  |  ?id=
-// Búsqueda simple para médicos: reconoce DNI, historia clínica, Id_Paciente o nombre, y devuelve hasta 8 pacientes
-// con su edad, sexo, establecimiento y fecha de la última atención.
+// GET /api/busqueda/pacientes/sugerencias?q=&limite=  |  ?id=
+// Búsqueda simple para médicos: reconoce DNI, historia clínica, Id_Paciente o nombre, y devuelve hasta `limite`
+// pacientes (8 por defecto) con su edad, sexo, establecimiento y fecha de la última atención.
+// Con nombres, primero van quienes tienen palabras completas iguales a lo escrito («ANA» antes que «ORELLANA»).
 const sugerenciasPacientes = async (req, res) => {
   const id = typeof req.query.id === 'string' ? req.query.id.trim().slice(0, 50) : '';
   const q = id ? '' : leerTexto(req, res);
   if (q === null) return;
   if (!id && q.length < 2) return res.status(200).json([]);
+  const limite = Math.min(MAX_PACIENTES + 1, Math.max(1, Number.parseInt(req.query.limite, 10) || 8));
   try {
     const pool = await poolPromise;
     const result = await withTransientRetry(() => {
       const request = pool.request();
       let where;
+      let coincidencia = '0';
       if (id) {
         request.input('id', sql.NVarChar(50), id);
         where = 'p.Id_Paciente = @id';
@@ -138,9 +151,12 @@ const sugerenciasPacientes = async (req, res) => {
         const terminos = agregarTerminos(request, q);
         request.input('exacto', sql.NVarChar(MAX_TEXTO), q);
         where = `p.Historia_Clinica = @exacto OR (${terminos.map((_, i) => `CONCAT(p.Apellido_Paterno_Paciente, ' ', p.Apellido_Materno_Paciente, ' ', p.Nombres_Paciente) LIKE @t${i}`).join(' AND ')})`;
+        // Cuántas palabras escritas coinciden con una palabra completa del nombre.
+        terminos.forEach((termino, i) => request.input(`w${i}`, sql.NVarChar(MAX_TEXTO + 4), `% ${termino} %`));
+        coincidencia = terminos.map((_, i) => `CASE WHEN CONCAT(' ', p.Apellido_Paterno_Paciente, ' ', p.Apellido_Materno_Paciente, ' ', p.Nombres_Paciente, ' ') LIKE @w${i} THEN 1 ELSE 0 END`).join(' + ');
       }
       return request.query(`
-        SELECT TOP (8)
+        SELECT TOP (${limite})
           p.Id_Paciente, p.Numero_Documento_Paciente AS Documento, p.Historia_Clinica, p.Ficha_Familiar,
           NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(p.Apellido_Paterno_Paciente)), ' ', LTRIM(RTRIM(p.Apellido_Materno_Paciente)), ' ', LTRIM(RTRIM(p.Nombres_Paciente))))), '') AS Paciente,
           p.Fecha_Nacimiento_Paciente AS FechaNacimiento, p.Id_Genero AS Sexo, p.Domicilio_Declarado, p.Domicilio_Reniec,
@@ -149,8 +165,9 @@ const sugerenciasPacientes = async (req, res) => {
         FROM MaestroPaciente p
         OUTER APPLY (SELECT TOP (1) e.Nombre_Establecimiento FROM MAESTRO_HIS_ESTABLECIMIENTO e WHERE e.Id_Establecimiento = p.Id_Establecimiento) est
         OUTER APPLY (SELECT MAX(n.Fecha_Atencion) AS UltimaAtencion, COUNT(DISTINCT n.Id_Cita) AS Atenciones FROM NProduccion n WHERE n.Id_Paciente = p.Id_Paciente) ult
+        CROSS APPLY (SELECT ${coincidencia} AS Palabras) rel
         WHERE ${where}
-        ORDER BY CASE WHEN ult.UltimaAtencion IS NULL THEN 1 ELSE 0 END, ult.UltimaAtencion DESC, Paciente
+        ORDER BY rel.Palabras DESC, CASE WHEN ult.UltimaAtencion IS NULL THEN 1 ELSE 0 END, ult.UltimaAtencion DESC, Paciente
       `);
     });
     res.status(200).json(result.recordset);
@@ -352,13 +369,29 @@ const resumenPersonal = async (req, res) => {
 // Atenciones = citas sin ningún CPMS; Aten. con proc. = citas con al menos un CPMS; Procedimientos CPMS = códigos CPMS registrados.
 const TIPOS_CPMS = "('CP', 'EX')";
 
+// Mismo reporte para el personal (lo que atendió) y para el paciente (lo que recibió): solo cambian el filtro y la ficha.
+const REPORTE_MENSUAL = {
+  personal: {
+    columna: 'n.Id_Personal',
+    ficha: `SELECT TOP (1) ${SELECT_PERSONAL} WHERE p.Id_Personal = @id;`,
+    nombre: 'personal'
+  },
+  paciente: {
+    columna: 'n.Id_Paciente',
+    ficha: 'SELECT TOP (1) p.* FROM MaestroPaciente p WHERE p.Id_Paciente = @id;',
+    nombre: 'paciente'
+  }
+};
+
 // GET /api/busqueda/personal/:id/reporte-mensual?anio=2026&mes=1
-const reporteMensualPersonal = async (req, res) => {
+// GET /api/busqueda/pacientes/:id/reporte-mensual?anio=2026&mes=1
+const reporteMensual = tipo => async (req, res) => {
+  const cfg = REPORTE_MENSUAL[tipo];
   const id = String(req.params.id || '').trim().slice(0, 50);
   const anio = Number(req.query.anio);
   const mes = Number(req.query.mes);
   const anioActual = new Date().getFullYear();
-  if (!id) return res.status(400).json({ message: 'Falta el ID del personal.' });
+  if (!id) return res.status(400).json({ message: `Falta el ID del ${cfg.nombre}.` });
   if (!Number.isInteger(anio) || anio < 2000 || anio > anioActual + 1 || !Number.isInteger(mes) || mes < 1 || mes > 12) {
     return res.status(400).json({ message: 'Elige un año y un mes válidos.' });
   }
@@ -380,7 +413,7 @@ const reporteMensualPersonal = async (req, res) => {
       .input('inicio', sql.Date, inicio)
       .input('fin', sql.Date, fin)
       .query(`
-        SELECT TOP (1) ${SELECT_PERSONAL} WHERE p.Id_Personal = @id;
+        ${cfg.ficha}
 
         -- Cada cita se clasifica una vez según tenga o no algún código CPMS.
         WITH citas AS (
@@ -397,7 +430,7 @@ const reporteMensualPersonal = async (req, res) => {
             FROM MAESTRO_HIS_CIE_CPMS catalogo
             WHERE catalogo.Codigo_Item = n.Codigo_Item
           ) k
-          WHERE n.Id_Personal = @id AND n.Fecha_Atencion >= @inicio AND n.Fecha_Atencion < @fin
+          WHERE ${cfg.columna} = @id AND n.Fecha_Atencion >= @inicio AND n.Fecha_Atencion < @fin
           GROUP BY n.Id_Cita, n.Id_Ups, DAY(n.Fecha_Atencion), UPPER(LTRIM(RTRIM(ISNULL(n.Id_Turno, ''))))
         )
         SELECT
@@ -414,21 +447,21 @@ const reporteMensualPersonal = async (req, res) => {
         GROUP BY c.Id_Ups, c.dia, c.turno
         ORDER BY MAX(u.Descripcion_Ups), c.Id_Ups, c.dia;
 
-        -- Establecimiento donde registró más atenciones en el mes.
+        -- Establecimiento con más atenciones en el mes.
         SELECT TOP (1) n.Id_Establecimiento AS id, MAX(e.Nombre_Establecimiento) AS nombre, MAX(n.renipress) AS renipress, COUNT(DISTINCT n.Id_Cita) AS citas
         FROM NProduccion n
         LEFT JOIN MAESTRO_HIS_ESTABLECIMIENTO e ON e.Id_Establecimiento = n.Id_Establecimiento
-        WHERE n.Id_Personal = @id AND n.Fecha_Atencion >= @inicio AND n.Fecha_Atencion < @fin
+        WHERE ${cfg.columna} = @id AND n.Fecha_Atencion >= @inicio AND n.Fecha_Atencion < @fin
         GROUP BY n.Id_Establecimiento
         ORDER BY citas DESC;
       `));
-    const [personal, filas, establecimiento] = result.recordsets;
-    if (!personal.length) return res.status(404).json({ message: 'No se encontró ese personal.' });
+    const [ficha, filas, establecimiento] = result.recordsets;
+    if (!ficha.length) return res.status(404).json({ message: `No se encontró ese ${cfg.nombre}.` });
     res.status(200).json({
       anio,
       mes,
       diasMes: new Date(Date.UTC(anio, mes, 0)).getUTCDate(),
-      personal: personal[0],
+      [tipo]: ficha[0],
       establecimiento: establecimiento[0] || null,
       filas: filas.map(f => ({
         ups: f.ups,
@@ -442,9 +475,11 @@ const reporteMensualPersonal = async (req, res) => {
       }))
     });
   } catch (error) {
-    responderError(res, error, 'personal');
+    responderError(res, error, cfg.nombre);
   }
 };
+const reporteMensualPersonal = reporteMensual('personal');
+const reporteMensualPaciente = reporteMensual('paciente');
 
 // ── REPORTE DE UNA ATENCIÓN (CITA) ──
 // GET /api/busqueda/citas/:id : todos los códigos registrados en la cita, con los datos del paciente, del personal,
@@ -499,5 +534,6 @@ module.exports = {
   buscarPersonal,
   resumenPersonal,
   reporteMensualPersonal,
+  reporteMensualPaciente,
   detalleCita
 };
