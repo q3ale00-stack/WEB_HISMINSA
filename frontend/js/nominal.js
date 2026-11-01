@@ -106,22 +106,17 @@ function cambiarTabPersonal(tab, { recordar = true } = {}) {
   document.getElementById('perPanelSimple').hidden = tab !== 'simple';
   if (recordar) { try { localStorage.setItem('his_per_tab', tab); } catch (_) { /* sin almacenamiento */ } }
   if (tab === 'filtros') iniciarBusquedaNominal('personal');
+  else iniciarPersonalSimple();
 }
 
 // id: profesional de la URL (#personal/123) al recargar o con Atrás/Adelante; '' si la URL no trae profesional.
 function abrirVistaPersonal({ id } = {}) {
   if (id) {
-    cambiarTabPersonal('simple', { recordar: false });
-    if (String(personalFichaId) === id) return;
-    sv('qPersonal', id);
-    buscarPersonal({ modo: 'id' });
+    if (String(PFS.personal?.Id_Personal) === id) cambiarTabPersonal('simple', { recordar: false });
+    else abrirPersonalSimplePorId(id);
     return;
   }
-  if (id === '' && personalFichaId !== null) {
-    personalFichaId = null;
-    if (busquedaState.personal.length > 1) renderListaPersonal(busquedaState.personal);
-    else document.getElementById('resPersonal').innerHTML = '';
-  }
+  if (id === '' && PFS.personal) pfsCerrarPersonal();
   let tab = 'simple';
   try { tab = localStorage.getItem('his_per_tab') || 'simple'; } catch (_) { /* sin almacenamiento */ }
   cambiarTabPersonal(tab);
@@ -367,8 +362,12 @@ function activarPanelNominal(box, st) {
     if (quitar) quitarFiltroNominal(quitar.dataset.quitar);
     const pagina = event.target.closest('[data-nom-pagina]');
     if (pagina && !pagina.disabled) { NOM.pagina = Number(pagina.dataset.nomPagina); buscarNominal({ mantenerPagina: true }); }
-    const toggle = event.target.closest('[data-nom-toggle]');
-    if (toggle) { plegarFechaNominal(toggle.dataset.nomToggle, NOM.abiertas.has(toggle.dataset.nomToggle)); return; }
+    // Toda la franja de la fecha expande o contrae, salvo si el clic terminó de seleccionar texto para copiarlo.
+    const franja = event.target.closest('[data-sep]');
+    if (franja) {
+      if (!String(window.getSelection())) plegarFechaNominal(franja.dataset.sep, NOM.abiertas.has(franja.dataset.sep));
+      return;
+    }
     const arbol = event.target.closest('[data-nom-arbol]');
     if (arbol) {
       nomParte('resultado').querySelectorAll('[data-sep]').forEach(tr => plegarFechaNominal(tr.dataset.sep, arbol.dataset.nomArbol === 'contraer'));
@@ -622,7 +621,7 @@ function nomDifHtml(dias) {
 
 const NOM_COLUMNAS = [
   ['Fecha', 'nom-sticky nom-c-fecha', r => esc(nomFecha(r.Fecha_Atencion))],
-  ['Cita', 'nom-sticky nom-c-cita mono', r => nomTxt(r.Id_Cita)],
+  ['Cita', 'nom-sticky nom-c-cita mono', (r, i) => (r.Id_Cita ? `<button type="button" class="nom-link" data-nom-ver="${i}" title="Ver el detalle de esta atención">${esc(r.Id_Cita)}</button>` : nomVacio)],
   ['IPRESS', 'nom-c-ipress', r => nomTxt(r.Ipress || r.Renipress)],
   ['Sistema', '', r => nomTxt(r.Sistema || r.Id_AplicacionOrigen)],
   ['Lote | Pág | Reg', 'mono nowrap', r => nomTxt(nomUnir([r.Lote, r.Num_Pag, r.Num_Reg]))],
@@ -666,7 +665,7 @@ function htmlResultadoNominal(datos) {
       const abierta = NOM.abiertas.has(fecha);
       separador = `<tr class="nom-sep${abierta ? '' : ' plegada'}" data-sep="${esc(fecha)}"><td colspan="${NOM_COLUMNAS.length + 1}"><span class="nom-sep-in"><button type="button" class="nom-toggle" data-nom-toggle="${esc(fecha)}" aria-expanded="${abierta}" title="${abierta ? 'Contraer' : 'Expandir'} los registros de este día">${abierta ? '−' : '+'}</button><span class="nom-sep-fecha">${esc(nombreDia)} ${esc(nomFecha(fecha))}</span><small title="Cada diagnóstico o procedimiento de una atención es un registro HIS">${nomPlural(citasDia, 'atención', 'atenciones')} · ${nomPlural(enDia, 'registro', 'registros')}</small></span></td></tr>`;
     }
-    return `${separador}<tr data-f="${esc(fecha)}"${NOM.abiertas.has(fecha) ? '' : ' hidden'}>${NOM_COLUMNAS.map(([, clase, celda]) => `<td class="${clase}">${celda(r)}</td>`).join('')}<td class="nom-c-acc"><button type="button" class="btn btn-secondary btn-xs" data-nom-ver="${i}">Ver</button></td></tr>`;
+    return `${separador}<tr data-f="${esc(fecha)}"${NOM.abiertas.has(fecha) ? '' : ' hidden'}>${NOM_COLUMNAS.map(([, clase, celda]) => `<td class="${clase}">${celda(r, i)}</td>`).join('')}<td class="nom-c-acc"><button type="button" class="btn btn-secondary btn-xs" data-nom-ver="${i}">Ver</button></td></tr>`;
   }).join('');
   const boton = (p, texto, deshabilitado) => `<button type="button" class="btn btn-secondary btn-sm" data-nom-pagina="${p}"${deshabilitado ? ' disabled' : ''}>${texto}</button>`;
   return `

@@ -39,6 +39,12 @@ async function columnasDe(pool, tabla) {
 const buscarCol = (cols, patron) => cols.find(c => patron.test(c)) || null;
 const q = nombreCol => `[${String(nombreCol).replace(/]/g, ']]')}]`;
 
+// Sistema de origen: el código 1 o vacío es HISMINSA; otro código sin nombre en el catálogo es EQHALY-SIHCE.
+const ID_HISMINSA = '1';
+const SISTEMA_HISMINSA = 'HISMINSA';
+const SISTEMA_OTRO = 'EQHALY-SIHCE';
+const ID_SISTEMA = `COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(50), n.Id_AplicacionOrigen))), ''), '${ID_HISMINSA}')`;
+
 // Descubre los nombres reales de las columnas que cambian entre versiones del HIS.
 async function esquema(pool) {
   const enCache = cache.get('nominal:esquema');
@@ -79,7 +85,7 @@ function columnasLectura(esq) {
   return `
     n.Anio, n.Mes, n.Dia, n.Fecha_Atencion, n.Id_Cita, n.Id_Establecimiento,
     est.Nombre_Establecimiento AS Ipress, est.Disa, est.Red, est.MicroRed, n.renipress AS Renipress,
-    n.Id_AplicacionOrigen, ${esq.sistema ? 'sis.Texto' : 'CAST(NULL AS nvarchar(100))'} AS Sistema,
+    n.Id_AplicacionOrigen, CASE WHEN ${ID_SISTEMA} = '${ID_HISMINSA}' THEN '${SISTEMA_HISMINSA}' ELSE ${esq.sistema ? `COALESCE(NULLIF(LTRIM(RTRIM(sis.Texto)), ''), '${SISTEMA_OTRO}')` : `'${SISTEMA_OTRO}'`} END AS Sistema,
     n.Lote, n.Num_Pag, n.Num_Reg, n.Id_Ups, ups.Descripcion_Ups AS ServicioUps,
     n.Id_Paciente, pac.Numero_Documento_Paciente AS Documento, pac.Id_Tipo_Documento_Paciente AS IdTipoDocumento,
     ${esq.tipoDoc ? 'tdoc.Texto' : 'CAST(NULL AS nvarchar(60))'} AS TipoDocumento,
@@ -196,7 +202,7 @@ function armarFiltros(query) {
     if (v) { const par = p(sql.NVarChar(MAX_TEXTO), v); add(`${col} = @${par.nombre}`, etiqueta, v, par); }
   }
   const sistema = texto(query.sistema, 'Sistema');
-  if (sistema) { const par = p(sql.NVarChar(50), sistema); add(`CONVERT(nvarchar(50), n.Id_AplicacionOrigen) = @${par.nombre}`, 'Sistema', sistema, par); }
+  if (sistema) { const par = p(sql.NVarChar(50), sistema); add(`${ID_SISTEMA} = @${par.nombre}`, 'Sistema', sistema, par); }
   const tipoDoc = texto(query.tipoDoc, 'Tipo de documento');
   if (tipoDoc) { const par = p(sql.NVarChar(20), tipoDoc); add(`n.Id_Paciente IN (SELECT pac4.Id_Paciente FROM MaestroPaciente pac4 WHERE CONVERT(nvarchar(20), pac4.Id_Tipo_Documento_Paciente) = @${par.nombre})`, 'Tipo de documento', tipoDoc, par); }
 
@@ -278,11 +284,11 @@ async function opciones(req, res) {
     const esq = await esquema(pool);
     const result = await withTransientRetry(() => pool.request().query(`
       SELECT n.Anio, n.Id_Establecimiento, n.Id_Ups, n.gruporiesgo_desc, n.condicion_gestante,
-             CONVERT(nvarchar(50), n.Id_AplicacionOrigen) AS Sistema, n.Tipo_Edad, n.Tipo_Diagnostico, n.Valor_Lab, n.Id_Turno,
+             ${ID_SISTEMA} AS Sistema, n.Tipo_Edad, n.Tipo_Diagnostico, n.Valor_Lab, n.Id_Turno,
              COUNT_BIG(*) AS total
       FROM NProduccion n
       GROUP BY GROUPING SETS ((n.Anio), (n.Id_Establecimiento), (n.Id_Ups), (n.gruporiesgo_desc), (n.condicion_gestante),
-                             (CONVERT(nvarchar(50), n.Id_AplicacionOrigen)), (n.Tipo_Edad), (n.Tipo_Diagnostico), (n.Valor_Lab), (n.Id_Turno));
+                             (${ID_SISTEMA}), (n.Tipo_Edad), (n.Tipo_Diagnostico), (n.Valor_Lab), (n.Id_Turno));
 
       SELECT e.Id_Establecimiento AS id, MAX(e.Nombre_Establecimiento) AS nombre, MAX(e.Disa) AS disa, MAX(e.Red) AS red, MAX(e.MicroRed) AS microRed
       FROM MAESTRO_HIS_ESTABLECIMIENTO e
@@ -321,7 +327,7 @@ async function opciones(req, res) {
         .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
       grupos: lista('gruporiesgo_desc'),
       gestante: lista('condicion_gestante'),
-      sistemas: lista('Sistema').map(id => ({ id, nombre: nombresSis.get(id) || id })),
+      sistemas: lista('Sistema').map(id => ({ id, nombre: id === ID_HISMINSA ? SISTEMA_HISMINSA : (String(nombresSis.get(id) || '').trim() || SISTEMA_OTRO) })),
       tiposEdad: lista('Tipo_Edad'),
       tiposDiagnostico: lista('Tipo_Diagnostico'),
       labs: lista('Valor_Lab', 60),

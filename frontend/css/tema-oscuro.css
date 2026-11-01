@@ -196,7 +196,7 @@
 :root[data-theme="dark"] .nom-sep.plegada td { background: linear-gradient(90deg, #301830, #261426 60%) !important; }
 :root[data-theme="dark"] .nom-toggle { background: var(--c-surface); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
 :root[data-theme="dark"] .nom-tree-bar { border: 1px solid #5f3e61; background: linear-gradient(100deg, #321b33, #281528 70%); }
-:root[data-theme="dark"] .nom-tree-text small b { background: var(--c-surface); border: 1px solid #5f3e61; }
+:root[data-theme="dark"] .nom-tree-text small:not(.nom-tree-total) b { background: var(--c-surface); border: 1px solid #5f3e61; }
 :root[data-theme="dark"] .nom-tree-btn { background: var(--c-surface); }
 :root[data-theme="dark"] .nom-dif-ok { background: #25321a; color: #bfe7a4; }
 :root[data-theme="dark"] .nom-dif-medio { background: #332b1a; color: #ebc78e; }

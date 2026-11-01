@@ -1,0 +1,16 @@
+<section id="view-pacientes" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar pacientes">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-pac-tab="simple" onclick="cambiarTabPacientes('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar paciente
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-pac-tab="filtros" id="pacTabAvanzada" onclick="cambiarTabPacientes('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="pacPanelSimple" class="pac-panel" role="tabpanel"></div>
+  <div id="pacPanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="nominalApp" class="nominal-app"></div>
+  </div>
+</section>

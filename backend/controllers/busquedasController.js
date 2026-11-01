@@ -20,6 +20,7 @@ const DESCRIPCION_ITEM = `
 
 const NOMBRE_PACIENTE = `NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(pac.Apellido_Paterno_Paciente)), ' ', LTRIM(RTRIM(pac.Apellido_Materno_Paciente)), ' ', LTRIM(RTRIM(pac.Nombres_Paciente))))), '')`;
 const NOMBRE_PERSONAL = `NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(per.Apellido_Paterno_Personal)), ' ', LTRIM(RTRIM(per.Apellido_Materno_Personal)), ' ', LTRIM(RTRIM(per.Nombres_Personal))))), '')`;
+const NOMBRE_REGISTRADOR = `NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(reg.Apellido_Paterno_Registrador)), ' ', LTRIM(RTRIM(reg.Apellido_Materno_Registrador)), ' ', LTRIM(RTRIM(reg.Nombres_Registrador))))), '')`;
 
 // Columnas de una atención con los nombres del paciente y del personal, la descripción del código
 // y, para los historiales, el DNI y sexo del paciente, la profesión del personal, el financiador y el establecimiento.
@@ -337,6 +338,50 @@ const buscarPersonal = async (req, res) => {
   }
 };
 
+// GET /api/busqueda/personal/sugerencias?q=texto[&limite=n] | ?id=Id_Personal
+// Igual que las sugerencias de pacientes: ficha del profesional con su última atención y número de citas.
+// Solo números: ID o DNI (empiezan con lo escrito); con letras, todas las palabras deben estar en el nombre.
+const sugerenciasPersonal = async (req, res) => {
+  const id = typeof req.query.id === 'string' ? req.query.id.trim().slice(0, 50) : '';
+  const q = id ? '' : leerTexto(req, res);
+  if (q === null) return;
+  if (!id && q.length < 2) return res.status(200).json([]);
+  const limite = Math.min(MAX_PERSONAL + 1, Math.max(1, Number.parseInt(req.query.limite, 10) || 8));
+  try {
+    const pool = await poolPromise;
+    const result = await withTransientRetry(() => {
+      const request = pool.request();
+      let where;
+      let coincidencia = '0';
+      if (id) {
+        request.input('id', sql.NVarChar(50), id);
+        where = 'p.Id_Personal = @id';
+      } else if (/^\d+$/.test(q)) {
+        request.input('inicio', sql.NVarChar(MAX_TEXTO + 1), `${q}%`);
+        where = 'p.Numero_Documento_Personal LIKE @inicio OR p.Id_Personal LIKE @inicio';
+      } else {
+        const terminos = agregarTerminos(request, q);
+        where = terminos.map((_, i) => `CONCAT(p.Apellido_Paterno_Personal, ' ', p.Apellido_Materno_Personal, ' ', p.Nombres_Personal) LIKE @t${i}`).join(' AND ');
+        terminos.forEach((termino, i) => request.input(`w${i}`, sql.NVarChar(MAX_TEXTO + 4), `% ${termino} %`));
+        coincidencia = terminos.map((_, i) => `CASE WHEN CONCAT(' ', p.Apellido_Paterno_Personal, ' ', p.Apellido_Materno_Personal, ' ', p.Nombres_Personal, ' ') LIKE @w${i} THEN 1 ELSE 0 END`).join(' + ');
+      }
+      return request.query(`
+        SELECT TOP (${limite}) x.*, ult.UltimaAtencion, ult.Atenciones
+        FROM (
+          SELECT ${coincidencia} AS Palabras, ${SELECT_PERSONAL}
+          WHERE ${where}
+        ) x
+        OUTER APPLY (SELECT MAX(n.Fecha_Atencion) AS UltimaAtencion, COUNT(DISTINCT n.Id_Cita) AS Atenciones FROM NProduccion n WHERE n.Id_Personal = x.Id_Personal) ult
+        ORDER BY x.Palabras DESC, CASE WHEN ult.UltimaAtencion IS NULL THEN 1 ELSE 0 END, ult.UltimaAtencion DESC,
+          x.Apellido_Paterno_Personal, x.Apellido_Materno_Personal, x.Nombres_Personal
+      `);
+    });
+    res.status(200).json(result.recordset);
+  } catch (error) {
+    responderError(res, error, 'personal');
+  }
+};
+
 // GET /api/busqueda/personal/resumen : totales de las tarjetas de la vista Personal.
 const resumenPersonal = async (req, res) => {
   const tablas = {
@@ -506,7 +551,8 @@ const detalleCita = async (req, res) => {
           prof.Descripcion_Profesion AS ProfesionPersonal,
           u.Descripcion_Ups AS Servicio,
           e.Nombre_Establecimiento AS NombreEstablecimiento,
-          fin.Descripcion_Financiador AS Financiador
+          fin.Descripcion_Financiador AS Financiador,
+          ${NOMBRE_REGISTRADOR} AS Registrador
         FROM NProduccion n
         LEFT JOIN MaestroPaciente pac ON n.Id_Paciente = pac.Id_Paciente
         LEFT JOIN MaestroPersonal per ON n.Id_Personal = per.Id_Personal
@@ -514,6 +560,7 @@ const detalleCita = async (req, res) => {
         LEFT JOIN MAESTRO_HIS_UPS u ON u.Id_Ups = n.Id_Ups
         LEFT JOIN MAESTRO_HIS_ESTABLECIMIENTO e ON e.Id_Establecimiento = n.Id_Establecimiento
         LEFT JOIN MAESTRO_HIS_FINANCIADOR fin ON fin.Id_Financiador = n.Id_Financiador
+        LEFT JOIN MaestroRegistrador reg ON reg.Id_Registrador = n.Id_Registrador
         ${DESCRIPCION_ITEM}
         WHERE n.Id_Cita = @id
         ORDER BY n.Fecha_Atencion, n.Codigo_Item
@@ -532,6 +579,7 @@ module.exports = {
   buscarAtenciones,
   buscarDefunciones,
   buscarPersonal,
+  sugerenciasPersonal,
   resumenPersonal,
   reporteMensualPersonal,
   reporteMensualPaciente,

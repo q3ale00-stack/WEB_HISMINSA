@@ -1,0 +1,134 @@
+<section id="view-consultas" class="view">
+  <!-- Todos los parámetros y filtros a la vista. js/consultas.js dibuja las listas. -->
+  <div id="cxPanel">
+    <div class="card cx-tarjeta">
+      <h3 class="cx-titulo">Consultas rápidas</h3>
+      <div class="cx-rapidas" id="cxRapidas" role="group" aria-label="Consultas rápidas"></div>
+    </div>
+
+    <div class="card cx-tarjeta">
+      <h3 class="cx-titulo">Parámetros</h3>
+      <div class="cx-parametros">
+        <fieldset class="cx-grupo-param">
+          <legend>Medida a calcular</legend>
+          <div class="cx-opciones" id="cxMedidas"></div>
+          <p class="cx-subtitulo">Promedios, máximos y sumas</p>
+          <div class="cx-opciones" id="cxMedidasExtra"></div>
+        </fieldset>
+        <fieldset class="cx-grupo-param">
+          <legend>Agrupar por <small>(puedes marcar varios)</small></legend>
+          <div class="cx-opciones" id="cxGrupos"></div>
+        </fieldset>
+        <fieldset class="cx-grupo-param">
+          <legend>Periodo de atención</legend>
+          <label class="cx-campo">
+            <span>Periodo</span>
+            <select class="select-native" id="cxPeriodo"></select>
+          </label>
+          <div class="cx-dos" id="cxFechas" hidden>
+            <label class="cx-campo"><span>Desde</span><input type="date" class="input" id="cxDesde"></label>
+            <label class="cx-campo"><span>Hasta</span><input type="date" class="input" id="cxHasta"></label>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+
+    <div class="card cx-tarjeta">
+      <div class="cx-tarjeta-cabecera">
+        <h3 class="cx-titulo">Filtros <span class="cx-insignia" id="cxFiltrosN" hidden></span></h3>
+        <div class="cx-reglas">
+          <label class="cx-campo"><span>Evaluar</span>
+            <select class="select-native" id="cxFormAmbito">
+              <option value="cita">En la misma cita</option>
+              <option value="paciente">En el mismo paciente</option>
+              <option value="registro">En la misma fila HIS</option>
+            </select>
+          </label>
+          <label class="cx-campo"><span>Debe cumplir</span>
+            <select class="select-native" id="cxFormModo">
+              <option value="AND">Todos los filtros (Y)</option>
+              <option value="OR">Al menos uno (O)</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" id="cxLimpiarFiltros">Limpiar filtros</button>
+        </div>
+      </div>
+      <div class="cx-secciones" id="cxFormulario"></div>
+      <datalist id="cxListaUps"></datalist>
+      <datalist id="cxListaEstablecimientos"></datalist>
+    </div>
+
+    <div class="card cx-tarjeta">
+      <div class="cx-tarjeta-cabecera">
+        <h3 class="cx-titulo">Condiciones adicionales (Y / O)</h3>
+        <button type="button" class="btn btn-secondary btn-sm" id="cxAgregarBloque">+ Agregar bloque</button>
+      </div>
+      <p class="cx-texto">Para combinar varias veces un mismo campo, como dos códigos distintos. «Misma cita» comprueba que ocurran juntos en una consulta; «mismo paciente», en su historial.</p>
+      <label class="cx-conector-form" id="cxFormConector" hidden><span>Unir los filtros de arriba con estos bloques:</span>
+        <select class="select-native" id="cxFormSiguiente">
+          <option value="AND">Y además</option>
+          <option value="OR">O bien</option>
+        </select>
+      </label>
+      <div class="cx-bloques" id="cxBloques"></div>
+    </div>
+
+    <div class="cx-barra-accion">
+      <p class="cx-frase" id="cxFrase" aria-live="polite"></p>
+      <button type="button" class="btn btn-ghost" id="cxGuardadas">Guardadas</button>
+      <button type="button" class="btn btn-secondary" id="cxRestablecer">Restablecer todo</button>
+      <button type="button" class="btn btn-primary" id="cxConsultar">Consultar</button>
+    </div>
+  </div>
+
+  <!-- Resultado: aparece después de consultar. -->
+  <section class="card cx-resultados" id="cxResultados" aria-label="Resultado de la consulta" hidden>
+    <div class="cx-respuesta">
+      <div>
+        <p class="cx-resp-etiqueta" id="cxTotalEtiqueta">Resultado</p>
+        <strong class="cx-resp-cifra" id="cxTotal">—</strong>
+        <p class="cx-texto" id="cxFraseResultado"></p>
+      </div>
+      <div class="cx-res-acciones">
+        <button type="button" class="btn btn-secondary btn-sm" id="cxGuardar">Guardar</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="cxExcel">Excel</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="cxPdf">PDF</button>
+      </div>
+    </div>
+    <ul class="cx-resumen">
+      <li id="cxResPacientes"><strong id="cxPacientes">—</strong> pacientes</li>
+      <li id="cxResCitas"><strong id="cxCitas">—</strong> citas</li>
+      <li id="cxResRegistros"><strong id="cxRegistros">—</strong> registros HIS</li>
+      <li><strong id="cxFilas">—</strong> filas <span class="cx-insignia aviso" id="cxInsignia" hidden></span></li>
+    </ul>
+    <p class="cx-nota">Un mismo paciente puede aparecer en varias filas, por eso las filas no siempre suman el total.</p>
+
+    <div class="cx-graf-cabecera">
+      <button type="button" class="cx-mas" id="cxToggleGrafico" aria-expanded="true">Ocultar gráfico</button>
+    </div>
+    <div class="cx-grafico" id="cxGrafico"></div>
+
+    <div class="cx-tabla-barra">
+      <input type="search" class="input" id="cxBuscar" placeholder="Buscar en la tabla" aria-label="Buscar en la tabla" autocomplete="off">
+      <label class="cx-por-pagina">Filas por página
+        <select class="select-native" id="cxPorPagina">
+          <option value="15">15</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="all">Todas</option>
+        </select>
+      </label>
+    </div>
+    <div class="table-wrap cx-tabla-wrap">
+      <table id="cxTabla" class="cx-tabla" aria-label="Resultado de la consulta">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="cx-paginacion" id="cxPaginacion" hidden></div>
+  </section>
+
+  <!-- Contexto de los datos, en una sola línea. -->
+  <p class="cx-contexto">En la base: <strong id="dashboardPacientes">—</strong> pacientes · <strong id="dashboardAtenciones">—</strong> citas · <strong id="dashboardEstablecimientos">—</strong> establecimientos · última atención: <strong id="dashboardUltimaAtencion">—</strong></p>
+</section>

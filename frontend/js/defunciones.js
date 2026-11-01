@@ -852,7 +852,7 @@ function defPaginador(st) {
     </div>`;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+alCargarVistas(() => {
   document.querySelectorAll('[data-def-periodo]').forEach(b => b.addEventListener('click', () => periodoDefunciones(b.dataset.defPeriodo)));
   const ayudaInicial = document.getElementById('resDefunciones')?.innerHTML || '';
   document.getElementById('formDefunciones')?.addEventListener('reset', () => {

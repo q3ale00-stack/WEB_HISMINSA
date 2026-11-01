@@ -1,0 +1,32 @@
+<section id="view-atenciones" class="view">
+  <div class="pac-tabs" role="tablist" aria-label="Formas de buscar atenciones">
+    <button type="button" class="pac-tab active" role="tab" aria-selected="true" data-ate-tab="simple" onclick="cambiarTabAtenciones('simple')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Buscar atención
+    </button>
+    <button type="button" class="pac-tab" role="tab" aria-selected="false" data-ate-tab="filtros" id="ateTabAvanzada" onclick="cambiarTabAtenciones('filtros')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+      Búsqueda avanzada
+    </button>
+  </div>
+  <div id="atePanelFiltros" class="pac-panel" role="tabpanel" hidden>
+    <div id="nominalAtencionesApp" class="nominal-app"></div>
+  </div>
+  <div id="atePanelSimple" class="pac-panel" role="tabpanel">
+  <div class="card search-card">
+    <form class="search-bar" id="formAtenciones" role="search">
+      <input class="input" id="qAtenciones" type="search" placeholder="Cita, ID de paciente, ID de personal o código HIS" autocomplete="off" aria-label="Buscar atención">
+      <div class="search-buttons">
+        <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
+        <button class="btn btn-secondary" type="reset">Limpiar</button>
+      </div>
+      <div class="search-dates">
+        <label class="label" for="desdeAtenciones">Desde<input class="input" id="desdeAtenciones" type="date"></label>
+        <label class="label" for="hastaAtenciones">Hasta<input class="input" id="hastaAtenciones" type="date"></label>
+      </div>
+    </form>
+    <p class="search-hint">Escribe un dato, elige un rango de fechas o ambos. Se muestran las 200 atenciones más recientes.</p>
+  </div>
+  <div id="resAtenciones" aria-live="polite"></div>
+  </div>
+</section>

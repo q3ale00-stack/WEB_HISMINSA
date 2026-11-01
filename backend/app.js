@@ -13,6 +13,7 @@ const busquedasRoutes = require('./routes/busquedasRoutes');
 const catalogosRoutes = require('./routes/catalogosRoutes');
 const nominalRoutes = require('./routes/nominalRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const indicadoresRoutes = require('./routes/indicadoresRoutes');
 const { requireAuth } = require('./controllers/authController');
 
 const app = express();
@@ -50,5 +51,6 @@ app.use('/api/nominal', nominalRoutes);
 app.use('/api/admin', adminRoutes);
 // Importación de datos: solo administradores (la restricción se aplica dentro del router).
 app.use('/api/importacion', importacionRoutes);
+app.use('/api/indicadores', indicadoresRoutes);
 
 module.exports = app;

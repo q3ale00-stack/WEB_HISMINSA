@@ -1,0 +1,112 @@
+<section id="view-importar" class="view">
+  <!-- Totales actuales de las tablas que se actualizan. -->
+  <div class="kpi-grid import-kpis">
+    <div class="kpi-card"><div class="kpi-label">Maestro de pacientes</div><div class="kpi-value" id="impTotalPaciente">—</div><div class="kpi-foot">Registros en MaestroPaciente</div></div>
+    <div class="kpi-card"><div class="kpi-label">Maestro de personal</div><div class="kpi-value" id="impTotalPersonal">—</div><div class="kpi-foot">Registros en MaestroPersonal</div></div>
+    <div class="kpi-card"><div class="kpi-label">Maestro de registradores</div><div class="kpi-value" id="impTotalRegistrador">—</div><div class="kpi-foot">Registros en MaestroRegistrador</div></div>
+    <div class="kpi-card accent"><div class="kpi-label">Producción nominal <span id="impKpiAnio"></span></div><div class="kpi-value" id="impTotalNominal">—</div><div class="kpi-foot">Registros HIS en NProduccion</div></div>
+  </div>
+
+  <!-- Formulario principal: una fila por tipo de archivo, con su modo de importación. -->
+  <section class="card import-panel">
+    <div class="card-header">
+      <div><div class="card-title">Importación de archivos planos</div><div class="card-subtitle">Elige los archivos con el botón «…» y el modo de cada uno. Solo se importan las filas que tengan archivo.</div></div>
+    </div>
+    <div class="import-layout">
+      <fieldset class="import-fieldset">
+        <legend>Archivos planos CSV</legend>
+        <div class="import-row" data-row="paciente">
+          <label class="import-row-label" for="impFilePaciente">Paciente</label>
+          <div class="import-path" id="impPathPaciente" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePaciente" title="Elegir MaestroPaciente.csv" aria-label="Elegir archivo de pacientes">…</button>
+          <input type="file" id="impFilePaciente" accept=".csv,.txt" data-row="paciente" hidden>
+          <select class="select-native import-mode" id="impModoPaciente" aria-label="Modo de importación de Paciente">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row" data-row="personal">
+          <label class="import-row-label" for="impFilePersonal">Personal</label>
+          <div class="import-path" id="impPathPersonal" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePersonal" title="Elegir MaestroPersonal.csv" aria-label="Elegir archivo de personal">…</button>
+          <input type="file" id="impFilePersonal" accept=".csv,.txt" data-row="personal" hidden>
+          <select class="select-native import-mode" id="impModoPersonal" aria-label="Modo de importación de Personal">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row" data-row="registrador">
+          <label class="import-row-label" for="impFileRegistrador">Registrador</label>
+          <div class="import-path" id="impPathRegistrador" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileRegistrador" title="Elegir MaestroRegistrador.csv" aria-label="Elegir archivo de registradores">…</button>
+          <input type="file" id="impFileRegistrador" accept=".csv,.txt" data-row="registrador" hidden>
+          <select class="select-native import-mode" id="impModoRegistrador" aria-label="Modo de importación de Registrador">
+            <option value="acumular">Acumular</option>
+            <option value="reemplazar">Reemplazar</option>
+          </select>
+        </div>
+        <div class="import-row import-row-nominal" data-row="nominal">
+          <label class="import-row-label" for="impFileNominal">Nominal</label>
+          <div class="import-path" id="impPathNominal" data-empty="true">Ningún archivo seleccionado</div>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileNominal" title="Elegir los CSV de la trama nominal (puedes elegir varios)" aria-label="Elegir archivos de la trama nominal">…</button>
+          <input type="file" id="impFileNominal" accept=".csv,.txt" data-row="nominal" multiple hidden>
+          <select class="select-native import-mode" id="impModoNominal" aria-label="Modo de importación de Nominal"></select>
+        </div>
+        <ul class="import-file-list" id="impNominalList" hidden></ul>
+      </fieldset>
+
+      <div class="import-side">
+        <button class="import-big-btn primary" id="impBtnImportar" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v11m0-11l-4 4m4-4l4 4"/></svg>
+          Importar
+        </button>
+        <button class="import-big-btn" id="impBtnSalir" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-8 9 8M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+          Salir
+        </button>
+      </div>
+    </div>
+
+    <!-- Resumen de lo que hará cada fila según su modo, para revisar antes de importar. -->
+    <div class="import-plan" id="impPlan" hidden>
+      <div class="import-plan-title">Se importará</div>
+      <ul id="impPlanList"></ul>
+    </div>
+    <label class="import-confirm" for="impConfirm" id="impConfirmBox" hidden>
+      <input type="checkbox" id="impConfirm">
+      <span id="impConfirmText">Entiendo que se borrarán datos antes de cargar los archivos.</span>
+    </label>
+    <div class="import-options">
+      <div class="field import-encoding">
+        <label class="label" for="impEncoding">Codificación de los archivos</label>
+        <select class="select-native" id="impEncoding">
+          <option value="auto">Detectar automáticamente</option>
+          <option value="ansi">ANSI / Windows (como el script)</option>
+          <option value="utf8">UTF-8</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- Progreso y registro de la importación en curso o de la última realizada. -->
+  <section class="card" id="impStatusCard" hidden>
+    <div class="card-header">
+      <div><div class="card-title">Progreso de la importación</div><div class="card-subtitle" id="impStatusMeta"></div></div>
+      <span class="import-badge" id="impStatusBadge"></span>
+    </div>
+    <div class="import-phase" id="impPhase"></div>
+    <div class="import-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="impProgress"><span id="impProgressBar"></span></div>
+    <div class="import-progress-meta"><span id="impProgressText"></span><span id="impRowsText"></span></div>
+    <div class="alert" id="impResultAlert"></div>
+    <ol class="import-log" id="impLog" aria-live="polite"></ol>
+  </section>
+
+  <!-- Equivale a la consulta «CONTABILIZAR REGISTROS» del script. -->
+  <section class="card">
+    <div class="card-header">
+      <div><div class="card-title">Registros por mes</div><div class="card-subtitle">Producción nominal registrada en NProduccion</div></div>
+      <div class="actions"><label class="label" for="impAnioResumen">Año</label><select class="select-native import-year" id="impAnioResumen"></select></div>
+    </div>
+    <div class="table-wrap"><table id="impMesesTabla"><thead><tr><th>Mes</th><th>Registros HIS</th></tr></thead><tbody><tr><td colspan="2" class="table-empty">Cargando...</td></tr></tbody></table></div>
+  </section>
+</section>

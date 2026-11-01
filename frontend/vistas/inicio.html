@@ -1,0 +1,82 @@
+<section id="view-inicio" class="view active">
+  <!-- Portada: degradado institucional con luces suaves, trama de puntos y línea de pulso; a la derecha, cifras reales. -->
+  <div class="home-hero hh">
+    <div class="hh-bg" aria-hidden="true">
+      <span class="hh-blob hh-b1"></span><span class="hh-blob hh-b2"></span><span class="hh-blob hh-b3"></span>
+      <svg class="hh-pulse" viewBox="0 0 1200 160" preserveAspectRatio="none"><path d="M0 100 H330 L360 100 L380 60 L400 130 L425 20 L450 145 L470 100 H690 L710 100 L725 78 L740 112 L755 100 H1200"/></svg>
+    </div>
+    <div class="home-hero-text">
+      <p class="home-greeting" id="homeGreeting">Bienvenido</p>
+      <h3>Producción asistencial del Hospital Regional de Ayacucho</h3>
+      <p class="home-freshness"><span class="home-dot" aria-hidden="true"></span><span id="homeFreshness">Consultando la última actualización de los datos…</span></p>
+      <form class="home-search" id="homeSearchForm" role="search">
+        <label class="home-search-label" for="homeSearchInput">Buscar un paciente</label>
+        <div class="home-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="homeSearchInput" type="search" placeholder="DNI, nombre, apellido o historia clínica" autocomplete="off">
+          <button class="btn btn-primary" type="submit">Buscar</button>
+        </div>
+      </form>
+    </div>
+    <div class="hh-side" aria-label="Cifras generales">
+      <div class="hh-glass hh-main">
+        <div class="hh-main-head">
+          <span class="hh-label" id="homeMesLabel">Citas atendidas en el último mes</span>
+          <span class="hh-trend" id="homeMesTrend"></span>
+        </div>
+        <strong class="hh-value"><span id="homeMes">—</span><small>citas</small></strong>
+        <div class="hh-spark" id="homeSpark"></div>
+        <span class="hh-foot" id="homeFootWrap">Última atención registrada: <b id="homeUltima">—</b></span>
+        <div class="hh-main-actions" id="homeMainActions">
+          <button type="button" class="hh-action-btn" id="homeBtnVerProduccion">
+            <span>Ver producción del mes</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <button type="button" class="hh-action-reset" id="homeBtnResetMes" title="Volver al último mes registrado" hidden>
+            ↺ Último mes
+          </button>
+        </div>
+      </div>
+      <div class="hh-mini-row">
+        <a class="hh-glass hh-mini" id="homeCardPacientes" href="#pacientes" data-go="pacientes" title="Ir a la sección de pacientes">
+          <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg></span>
+          <strong id="homePacientes">—</strong><span>pacientes en el padrón</span>
+        </a>
+        <a class="hh-glass hh-mini" id="homeCardAtenciones" href="#atenciones" data-go="atenciones" title="Ir a la sección de atenciones">
+          <span class="hh-mini-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
+          <strong id="homeAtenciones">—</strong><span>citas atendidas registradas</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-grid">
+    <section class="card home-chart-card" aria-labelledby="homeChartTitle">
+      <div class="card-header">
+        <div><div class="card-title" id="homeChartTitle">Citas atendidas por mes</div><div class="card-subtitle" id="homeChartNote">Últimos meses con registros en NProduccion · Haz clic en una barra para seleccionarla</div></div>
+        <div class="actions">
+          <span class="home-chart-badge" id="homeChartBadge" style="display:none;"></span>
+        </div>
+      </div>
+      <div class="home-chart" id="homeChart"><div class="table-empty">Cargando…</div></div>
+    </section>
+    <div class="home-links">
+      <button class="home-link" type="button" data-go="atenciones">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></svg></span>
+        <span><span class="home-link-title">Atenciones</span><span class="home-link-text">Por cita, paciente, personal, código o fechas</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="defunciones">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 13.5h5"/></svg></span>
+        <span><span class="home-link-title">Defunciones</span><span class="home-link-text">Registros del SINADEF de Ayacucho</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="catalogos">
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg></span>
+        <span><span class="home-link-title">Catálogos</span><span class="home-link-text">CIE-10, CPMS, UPS, laboratorio y más</span></span>
+      </button>
+      <button class="home-link" type="button" data-go="importar" id="homeImportar" hidden>
+        <span class="home-link-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v11m0-11l-4 4m4-4l4 4"/></svg></span>
+        <span><span class="home-link-title">Importar datos</span><span class="home-link-text">Actualiza la base con los CSV del HIS</span></span>
+      </button>
+    </div>
+  </div>
+</section>

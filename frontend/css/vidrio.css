@@ -1,0 +1,335 @@
+/* ═══════════════════════════════════════════
+  ASPECTO «VIDRIO» — HIS MINSA
+  Capa que se carga después de app.css y tema-oscuro.css: foto del hospital desenfocada de fondo
+  y paneles translúcidos encima. No cambia el contenido; solo superficies, bordes y sombras.
+  Todas las reglas empiezan por :root[data-theme] para ganar a las del tema oscuro sin !important
+  (el atributo siempre existe: lo pone el script del <head>).
+   ═══════════════════════════════════════════ */
+:root {
+  /* Paleta nítida del tema claro: los mismos morados de la marca, con más saturación y contraste. */
+  --c-primary: #7a1a9c;
+  --c-primary-h: #5f1280;
+  --c-accent: #c9249b;
+  --c-brand-deep: #2f0a52;
+  --c-text: #25102e;
+  --c-text-secondary: #4b3058;
+  --c-text-muted: #6b5376;
+  --vidrio-bg: linear-gradient(140deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,.66) 100%);
+  --vidrio-bg-fuerte: rgba(255,255,255,.93);
+  --vidrio-borde: rgba(255,255,255,.88);
+  --vidrio-blur: 26px;
+  --vidrio-sombra: 0 12px 32px rgba(58,12,92,.16), inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(122,26,156,.08);
+  --vidrio-sombra-hover: 0 18px 40px rgba(58,12,92,.24), inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(122,26,156,.08);
+  /* Haces de luz diagonales y manchas de color definidas: le dan al vidrio algo limpio que refractar. */
+  --vidrio-velo:
+    linear-gradient(115deg, transparent 18%, rgba(255,255,255,.34) 18.2%, rgba(255,255,255,.06) 31%, transparent 31.2%),
+    linear-gradient(115deg, transparent 62%, rgba(255,255,255,.24) 62.2%, rgba(255,255,255,.04) 78%, transparent 78.2%),
+    radial-gradient(34% 44% at 4% 8%, rgba(217,43,190,.72), transparent 70%),
+    radial-gradient(32% 42% at 96% 4%, rgba(92,62,240,.68), transparent 70%),
+    radial-gradient(38% 48% at 92% 94%, rgba(255,58,150,.62), transparent 70%),
+    radial-gradient(38% 48% at 8% 96%, rgba(120,40,225,.64), transparent 70%),
+    linear-gradient(160deg, #f7ecff 0%, #efdcfb 50%, #f8def2 100%);
+  --vidrio-grano: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .1 0 0 0 0 .3 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  /* Tan intenso como la portada, pero dejando pasar el color del fondo por el lado derecho. */
+  --vidrio-barra: linear-gradient(110deg, rgba(47,10,82,.94) 0%, rgba(98,22,134,.88) 55%, rgba(160,30,150,.80) 100%);
+}
+/* Oscuro: negro profundo con brillo malva (ver la sección «Aspecto oscuro» al final). */
+:root[data-theme="dark"] {
+  --vidrio-bg: rgba(17,14,19,.90);
+  --vidrio-bg-fuerte: rgba(13,11,15,.94);
+  --vidrio-borde: rgba(255,255,255,.08);
+  --vidrio-sombra: 0 18px 46px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+  --vidrio-sombra-hover: 0 22px 52px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.08);
+  --vidrio-velo: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(150,104,146,.22), transparent 70%),
+                 radial-gradient(ellipse 50% 40% at 0% 100%, rgba(110,70,108,.16), transparent 70%);
+  --vidrio-barra: linear-gradient(110deg, rgba(30,14,34,.95) 0%, rgba(44,20,50,.93) 55%, rgba(58,28,64,.91) 100%);
+  --oscuro-acento: #d8a7d0;
+  --oscuro-activo: linear-gradient(180deg, #b98db3 0%, #7c5877 100%);
+  --oscuro-texto: #f4eff5;
+  --oscuro-texto-2: #b9aebb;
+}
+
+/* Sin desenfoque disponible, o si el equipo pide menos transparencia: paneles casi opacos. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --vidrio-bg: rgba(255,255,255,.94); }
+  :root[data-theme="dark"] { --vidrio-bg: rgba(27,20,30,.95); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --vidrio-bg: rgba(255,255,255,.96); --vidrio-blur: 0px; }
+  :root[data-theme="dark"] { --vidrio-bg: rgba(27,20,30,.97); }
+}
+
+/* ── Fondo: degradado de color fijo. La foto desenfocada se quitó porque agrisaba los colores. ── */
+:root[data-theme] .app { position: relative; isolation: isolate; }
+:root[data-theme] .app::before,
+:root[data-theme] .app::after { content: ''; position: fixed; pointer-events: none; }
+:root[data-theme] .app::before { inset: 0; z-index: -2; background: #f3e4fb; }
+/* Un tamaño por capa (el grano y las 7 del velo); si no, las manchas se repetirían en mosaico. */
+:root[data-theme] .app::after {
+  inset: 0; z-index: -1;
+  background: var(--vidrio-grano), var(--vidrio-velo);
+  background-size: 160px 160px, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+}
+
+/* ── Encabezado flotante: un solo panel de vidrio con el logo, el usuario y el menú  ── */
+:root[data-theme] .appbar {
+  margin: 14px max(16px, calc((100% - 1600px) / 2 + 28px)) 0;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 24px;
+  background: var(--vidrio-barra);
+  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7);
+  box-shadow: 0 14px 40px rgba(40,6,70,.34), inset 0 1px 0 rgba(255,255,255,.22);
+}
+:root[data-theme] .appbar-top { min-height: 60px; padding: 10px 18px; background: transparent; border-bottom: 0; }
+
+/* Menú en forma de píldora: la vista activa queda en blanco, como una pestaña encendida. */
+:root[data-theme] .appnav { position: relative; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-theme] .appnav::after { display: none; }
+:root[data-theme] .appnav-inner {
+  width: fit-content; max-width: calc(100% - 28px); margin: 0 14px 14px; padding: 5px;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(255,255,255,.08);
+}
+:root[data-theme] .appnav-sep { height: 22px; margin: 0 6px; background: rgba(255,255,255,.18); }
+:root[data-theme] .appnav .nav-btn { padding: 8px 15px; color: rgba(255,255,255,.80); transition: background .2s ease, color .2s ease, box-shadow .2s ease; }
+:root[data-theme] .appnav .nav-btn svg { color: currentColor; opacity: .8; }
+:root[data-theme] .appnav .nav-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+:root[data-theme] .appnav .nav-btn.active { background: #fff; color: var(--c-brand-deep); box-shadow: 0 4px 14px rgba(20,0,25,.28); }
+:root[data-theme] .appnav .nav-btn.active svg { color: var(--c-primary); opacity: 1; }
+:root[data-theme] .appnav .nav-btn:focus-visible { outline: 2px solid #f2c4e3; outline-offset: 2px; }
+
+/* ── Título de la vista ── */
+:root[data-theme] .page-head h2 { color: var(--c-brand-deep); }
+:root[data-theme] .page-head p { color: var(--c-text-secondary); }
+
+/* ── Tarjetas y paneles ── */
+:root[data-theme] .card {
+  border: 1px solid var(--vidrio-borde); border-radius: 20px;
+  background: var(--vidrio-bg);
+  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.8); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.8);
+  box-shadow: var(--vidrio-sombra);
+}
+:root[data-theme] .card:hover { box-shadow: var(--vidrio-sombra-hover); }
+/* Las tablas van sobre un fondo casi opaco: el vidrio es para mirar, las cifras para leer. */
+:root[data-theme] .table-wrap { background: var(--vidrio-bg-fuerte); border-color: var(--vidrio-borde); border-radius: 14px; }
+
+/* ── Inicio ── */
+:root[data-theme] #view-inicio .home-hero.hh {
+  border: 1px solid rgba(255,255,255,.16); border-radius: 26px;
+  background: linear-gradient(125deg, rgba(36,8,68,.97) 0%, rgba(78,18,122,.94) 40%, rgba(132,24,150,.90) 72%, rgba(186,32,146,.86) 100%);
+  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7);
+  box-shadow: 0 18px 44px rgba(52,10,92,.36), inset 0 1px 0 rgba(255,255,255,.20);
+}
+:root[data-theme] .hh-glass {
+  border-radius: 20px; border-color: rgba(255,255,255,.34);
+  /* Tinte oscuro bajo el brillo: sin él, las luces de la portada dejan el texto blanco sin contraste. */
+  background: linear-gradient(140deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 100%), rgba(42,8,84,.42);
+  backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.38), 0 12px 30px rgba(20,0,40,.26);
+}
+:root[data-theme] .hh-label,
+:root[data-theme] .hh-mini > span:last-child { color: rgba(255,255,255,.94); }
+:root[data-theme] .hh-b1 { background: #c52fc0; }
+:root[data-theme] .hh-b2 { background: #b324b8; }
+:root[data-theme] .hh-b3 { background: #6a4dff; opacity: .34; }
+/* Barras del gráfico de Inicio con color pleno; el mes elegido, en magenta encendido. */
+:root[data-theme] .home-bar { background: linear-gradient(180deg, #a93ad6 0%, #7a1a9c 100%); }
+:root[data-theme] .home-bar-col:hover .home-bar,
+:root[data-theme] .home-bar-col:focus-visible .home-bar { background: linear-gradient(180deg, #c04ae6 0%, #8d22b4 100%); }
+:root[data-theme] .home-bar-col.is-last .home-bar { background: linear-gradient(180deg, #8a24b4 0%, #4f1080 100%); }
+:root[data-theme] .home-bar-col.is-selected .home-bar { background: linear-gradient(180deg, #f0359f 0%, #a81a9c 100%); box-shadow: 0 6px 20px rgba(200,30,150,.42); }
+:root[data-theme] .home-link {
+  border: 1px solid var(--vidrio-borde); border-radius: 20px;
+  background: var(--vidrio-bg);
+  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.8); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.8);
+  box-shadow: var(--vidrio-sombra);
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+:root[data-theme] .home-link:hover { transform: translateY(-3px); background: var(--vidrio-bg-fuerte); border-color: var(--vidrio-borde); box-shadow: var(--vidrio-sombra-hover); }
+:root[data-theme] .home-link-icon { background: rgba(107,36,112,.10); }
+
+/* ── Ventanas emergentes: el fondo se desenfoca en lugar de solo oscurecerse ── */
+:root[data-theme] .modal-overlay { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+:root[data-theme] .modal-box { border-radius: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] .home-link:hover { transform: none; }
+}
+
+/* ── Luces LED: un destello de color recorre el borde del encabezado y de la portada ──
+   El anillo es un degradado cónico que gira; la máscara deja ver solo el borde (2px).
+   Sin @property (navegadores antiguos) el destello queda quieto, sin romper nada. */
+@property --led-angulo { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes led-giro { to { --led-angulo: 360deg; } }
+@keyframes led-pulso { 50% { box-shadow: 0 18px 44px rgba(42,10,48,.28), 0 0 34px rgba(214,120,200,.38), inset 0 1px 0 rgba(255,255,255,.14); } }
+:root[data-theme] .appbar::before,
+:root[data-theme] #view-inicio .home-hero.hh::before {
+  content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  border-radius: inherit; padding: 2px;
+  background: conic-gradient(from var(--led-angulo),
+    transparent 0 50%, rgba(242,150,220,.45) 60%, #f6b8e4 70%, #ffffff 76%, #b98cff 83%, rgba(185,140,255,.4) 90%, transparent 96%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: led-giro 7s linear infinite;
+}
+:root[data-theme] .appbar::before { animation-duration: 10s; animation-direction: reverse; }
+/* Entra subiendo como las tarjetas y luego sigue con el pulso. */
+:root[data-theme] #view-inicio.active .home-hero.hh { animation: vidrio-entrar .5s cubic-bezier(.2,.7,.2,1) backwards, led-pulso 7s ease-in-out .5s infinite; }
+
+/* Al pasar el mouse, las tarjetas que se pueden pulsar se encienden con un halo malva
+   (los paneles grandes no, para que no parpadeen al mover el mouse por encima). */
+:root[data-theme] .home-link:hover,
+:root[data-theme] .catalog-card:hover,
+:root[data-theme] .ps-reciente:hover {
+  border-color: rgba(214,120,200,.55);
+  box-shadow: var(--vidrio-sombra-hover), 0 0 0 1px rgba(214,120,200,.25), 0 0 26px rgba(214,120,200,.28);
+}
+
+/* Reflejo de luz que sigue al cursor (js/efectos.js pone --mx y --my). */
+:root[data-theme] .home-link,
+:root[data-theme] .catalog-card,
+:root[data-theme] .ps-reciente { position: relative; overflow: hidden; }
+:root[data-theme] .home-link::after,
+:root[data-theme] .catalog-card::after,
+:root[data-theme] .ps-reciente::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.38), rgba(242,190,228,.14) 40%, transparent 70%);
+  opacity: 0; transition: opacity .25s ease;
+}
+:root[data-theme="dark"] .home-link::after,
+:root[data-theme="dark"] .catalog-card::after,
+:root[data-theme="dark"] .ps-reciente::after {
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(216,167,208,.20), rgba(216,167,208,.06) 45%, transparent 70%);
+}
+:root[data-theme] .home-link:hover::after,
+:root[data-theme] .catalog-card:hover::after,
+:root[data-theme] .ps-reciente:hover::after { opacity: 1; }
+
+/* ── Cambio de vista: la nueva entra deslizándose desde el lado hacia el que se avanza en el menú ──
+   js/app.js (showView) pone data-vista-dir en <html>. «clip» evita que asome una barra horizontal mientras entra. */
+@keyframes vista-adelante { from { opacity: 0; transform: translateX(44px); } }
+@keyframes vista-atras { from { opacity: 0; transform: translateX(-44px); } }
+:root[data-theme] .main { overflow-x: clip; }
+:root[data-theme] .view.active { animation: vista-adelante .38s cubic-bezier(.2,.7,.2,1) backwards; }
+:root[data-theme][data-vista-dir="atras"] .view.active { animation-name: vista-atras; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] .view.active { animation: none; }
+}
+
+/* Al abrir una vista, las tarjetas aparecen subiendo una tras otra.
+   Solo «backwards»: al terminar se suelta el transform y el hover puede volver a moverlas. */
+@keyframes vidrio-entrar { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+:root[data-theme] .view.active .card,
+:root[data-theme] .view.active .home-link,
+:root[data-theme] .view.active .catalog-card,
+:root[data-theme] .view.active .ps-reciente { animation: vidrio-entrar .5s cubic-bezier(.2,.7,.2,1) backwards; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(2) { animation-delay: .05s; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(3) { animation-delay: .10s; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(4) { animation-delay: .15s; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(5) { animation-delay: .20s; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(6) { animation-delay: .25s; }
+:root[data-theme] .view.active :is(.card, .home-link, .catalog-card, .ps-reciente):nth-child(n+7) { animation-delay: .30s; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme] .appbar::before,
+  :root[data-theme] #view-inicio .home-hero.hh::before,
+  :root[data-theme] #view-inicio.active .home-hero.hh,
+  :root[data-theme] .view.active :is(.card, .home-hero.hh, .home-link, .catalog-card, .ps-reciente) { animation: none; }
+  :root[data-theme] :is(.home-link, .catalog-card, .ps-reciente)::after { display: none; }
+}
+
+/* ═══════════════════════════════════════════
+  ASPECTO OSCURO
+  Negro profundo sin foto, paneles negros con borde fino, pestañas con contorno
+  y la activa rellena de malva; títulos en blanco y resplandor malva en la portada.
+   ═══════════════════════════════════════════ */
+:root[data-theme="dark"] body { background: #0a090b; }
+:root[data-theme="dark"] .app::before { background: #0a090b; filter: none; }
+:root[data-theme="dark"] .app::after { background: var(--vidrio-velo); }
+
+/* Encabezado: morado profundo y apagado, con brillo arriba. */
+:root[data-theme="dark"] .appbar { border-color: rgba(216,167,208,.12); box-shadow: 0 18px 46px rgba(0,0,0,.55), inset 0 1px 0 rgba(216,167,208,.10); }
+:root[data-theme="dark"] .appbar-top { background: transparent; border-bottom: 0; }
+:root[data-theme="dark"] .appbar .topbar-badge,
+:root[data-theme="dark"] .user-menu-btn { background: rgba(18,6,22,.45); border-color: rgba(216,167,208,.16); }
+
+/* Pestañas con contorno; la activa, rellena de malva. */
+:root[data-theme="dark"] .appnav-inner { gap: 6px; background: rgba(18,6,22,.40); border-color: rgba(216,167,208,.10); }
+:root[data-theme="dark"] .appnav-group { gap: 6px; }
+:root[data-theme="dark"] .appnav-sep { background: rgba(216,167,208,.20); }
+:root[data-theme="dark"] .appnav .nav-btn { border: 1px solid rgba(216,167,208,.18); background: transparent; color: var(--oscuro-texto-2); }
+:root[data-theme="dark"] .appnav .nav-btn svg { color: currentColor; }
+:root[data-theme="dark"] .appnav .nav-btn:hover { border-color: rgba(255,255,255,.32); background: rgba(255,255,255,.05); color: var(--oscuro-texto); }
+:root[data-theme="dark"] .appnav .nav-btn.active { border-color: rgba(255,255,255,.20); background: var(--oscuro-activo); color: #fff; box-shadow: 0 6px 18px rgba(185,141,179,.25), inset 0 1px 0 rgba(255,255,255,.25); }
+:root[data-theme="dark"] .appnav .nav-btn.active svg { color: #fff; }
+
+/* Títulos en blanco; el acento malva queda para cifras destacadas y detalles. */
+:root[data-theme="dark"] .page-head h2,
+:root[data-theme="dark"] .card-title { color: var(--oscuro-texto); }
+:root[data-theme="dark"] .page-head p,
+:root[data-theme="dark"] .card-subtitle { color: var(--oscuro-texto-2); }
+:root[data-theme="dark"] a { color: var(--oscuro-acento); }
+
+/* Paneles negros. */
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .home-chart-card,
+:root[data-theme="dark"] .home-link { background: var(--vidrio-bg); border-color: var(--vidrio-borde); box-shadow: var(--vidrio-sombra); }
+:root[data-theme="dark"] .home-link:hover { background: #1a161c; border-color: rgba(255,255,255,.14); }
+:root[data-theme="dark"] .home-link-icon { background: rgba(255,255,255,.06); color: var(--oscuro-acento); }
+:root[data-theme="dark"] .table-wrap { background: var(--vidrio-bg-fuerte); }
+:root[data-theme="dark"] th { background: #17131a; color: var(--oscuro-texto-2); }
+:root[data-theme="dark"] .modal-box { background: #141116; border: 1px solid rgba(255,255,255,.08); }
+
+/* Botones principales: píldora malva. */
+:root[data-theme="dark"] .btn-primary { background: var(--oscuro-activo); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.22); }
+:root[data-theme="dark"] .btn-primary:hover { background: linear-gradient(180deg, #c99dc3 0%, #8a6385 100%); box-shadow: 0 6px 18px rgba(185,141,179,.28), inset 0 1px 0 rgba(255,255,255,.25); }
+
+/* Portada de Inicio: tarjeta negra con un resplandor malva que sube desde abajo. */
+:root[data-theme="dark"] #view-inicio .home-hero.hh {
+  border-color: rgba(255,255,255,.08);
+  background:
+    radial-gradient(ellipse 55% 70% at 30% 125%, rgba(206,150,198,.50), transparent 70%),
+    radial-gradient(ellipse 40% 60% at 95% -10%, rgba(150,104,146,.20), transparent 70%),
+    linear-gradient(180deg, #1b171d 0%, #0f0d10 100%);
+  box-shadow: 0 22px 54px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
+}
+:root[data-theme="dark"] .hh-blob { opacity: .08; }
+:root[data-theme="dark"] .hh-pulse { opacity: .08; }
+:root[data-theme="dark"] #view-inicio .hh .home-greeting { background: rgba(216,167,208,.12); border-color: rgba(216,167,208,.25); color: var(--oscuro-acento); }
+:root[data-theme="dark"] .hh-glass { background: rgba(0,0,0,.38); border-color: rgba(255,255,255,.09); box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 12px 30px rgba(0,0,0,.35); }
+:root[data-theme="dark"] .hh-mini-icon { background: rgba(255,255,255,.06); color: var(--oscuro-acento); }
+:root[data-theme="dark"] .hh-trend { background: transparent; border-color: rgba(255,255,255,.22); }
+:root[data-theme="dark"] .hh-action-btn { background: var(--oscuro-activo); color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.22); }
+:root[data-theme="dark"] .hh-spark-pt.is-sel { border-color: #fff; background: var(--oscuro-acento); box-shadow: 0 0 0 6px rgba(216,167,208,.18), 0 0 18px rgba(216,167,208,.5); }
+:root[data-theme="dark"] .hh-spark-meses span.is-sel { background: var(--oscuro-acento); color: #1b141e; }
+:root[data-theme="dark"] .home-search-box,
+:root[data-theme="dark"] #view-inicio .hh .home-search-box { border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(0,0,0,.45); box-shadow: 0 10px 26px rgba(0,0,0,.4); }
+:root[data-theme="dark"] #view-inicio .hh .home-search-box .btn { border-radius: 999px; }
+:root[data-theme="dark"] .home-search-box:focus-within,
+:root[data-theme="dark"] #view-inicio .hh .home-search-box:focus-within { border-color: rgba(216,167,208,.55); box-shadow: 0 10px 26px rgba(0,0,0,.4), 0 0 0 3px rgba(216,167,208,.18); }
+
+/* Barras del gráfico: degradado malva que se apaga hacia abajo, como el área del modelo. */
+:root[data-theme="dark"] .home-bar { background: linear-gradient(180deg, rgba(185,141,179,.75) 0%, rgba(124,88,119,.18) 100%); border-radius: 8px 8px 0 0; }
+:root[data-theme="dark"] .home-bar-col:hover .home-bar,
+:root[data-theme="dark"] .home-bar-col:focus-visible .home-bar { background: linear-gradient(180deg, rgba(216,167,208,.9) 0%, rgba(150,104,146,.25) 100%); }
+:root[data-theme="dark"] .home-bar-col.is-last .home-bar,
+:root[data-theme="dark"] .home-bar-col.is-selected .home-bar { background: linear-gradient(180deg, #ecc3e5 0%, rgba(185,141,179,.35) 100%); box-shadow: 0 0 22px rgba(216,167,208,.28); }
+/* Las cifras pueden caer sobre la punta de las barras altas: en blanco con sombra se leen igual. */
+:root[data-theme="dark"] .home-bar-value,
+:root[data-theme="dark"] .home-bar-col.is-last .home-bar-value { color: var(--oscuro-texto); text-shadow: 0 1px 4px rgba(0,0,0,.85); }
+:root[data-theme="dark"] .home-bar-col.is-selected .home-bar-value { background: var(--oscuro-acento); color: #1b141e; text-shadow: none; }
+:root[data-theme="dark"] .home-bar-col.is-selected .home-bar-value::after { border-top-color: var(--oscuro-acento); }
+
+/* ── Celulares y tabletas: el menú desplegable es un panel de vidrio bajo el encabezado ── */
+@media (max-width: 900px) {
+  :root[data-theme] .appbar { margin: 10px 10px 0; border-radius: 20px; }
+  :root[data-theme] .appbar-top { padding: 8px 12px; }
+  :root[data-theme] .appnav {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 20px;
+    background: rgba(42,10,48,.94); box-shadow: 0 18px 40px rgba(30,6,36,.35);
+  }
+  :root[data-theme="dark"] .appnav { background: rgba(16,13,18,.97); border-color: rgba(255,255,255,.08); }
+  :root[data-theme="dark"] .appnav .nav-btn { border-color: transparent; }
+  :root[data-theme] .appnav-inner { width: auto; max-width: none; margin: 0; padding: 10px 12px 14px; border: 0; border-radius: 0; background: transparent; }
+  :root[data-theme] .appnav .nav-section { color: rgba(242,196,227,.6); }
+}

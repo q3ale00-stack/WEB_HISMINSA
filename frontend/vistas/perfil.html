@@ -1,0 +1,81 @@
+<section id="view-perfil" class="view">
+  <section class="card">
+    <div class="card-header">
+      <div><div class="card-title">Mi perfil</div><div class="card-subtitle">Información asociada a tu cuenta del sistema</div></div>
+    </div>
+    <div class="profile-grid" id="profileDetails" aria-live="polite"></div>
+  </section>
+
+  <section class="card" id="adminUserFormCard" hidden>
+    <div class="card-header">
+      <div><div class="card-title">Crear cuenta de usuario</div><div class="card-subtitle">Solo los administradores pueden registrar nuevas cuentas. La contraseña debe tener al menos 12 caracteres.</div></div>
+    </div>
+    <form id="createUserForm">
+      <div class="form-grid-3">
+        <div class="field">
+          <label class="label" for="newUserRole">Tipo de cuenta <span class="required">*</span></label>
+          <select class="select-native" id="newUserRole" name="role" required>
+            <option value="doctor">Médico</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <div class="field span-2" id="personSearchField">
+          <label class="label" for="personSearch">Buscar médico en el catálogo HIS <span class="required">*</span></label>
+          <input class="input" id="personSearch" type="search" placeholder="Nombre o DNI (mínimo 2 caracteres)" autocomplete="off">
+          <select class="select-native" id="personMatch" style="margin-top:8px" aria-label="Médico encontrado en el catálogo">
+            <option value="">Escribe para buscar y selecciona un médico</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserUsername">Usuario <span class="required">*</span></label>
+          <input class="input" id="newUserUsername" name="username" minlength="3" maxlength="100" autocomplete="off" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserPassword">Contraseña temporal <span class="required">*</span></label>
+          <input class="input" id="newUserPassword" name="password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserFullName">Nombre completo <span class="required">*</span></label>
+          <input class="input" id="newUserFullName" name="fullName" maxlength="200" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserDni">DNI <span class="required">*</span></label>
+          <input class="input" id="newUserDni" name="dni" maxlength="20" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserEmail">Correo electrónico <span class="required">*</span></label>
+          <input class="input" id="newUserEmail" name="email" type="email" maxlength="254" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserPhone">Teléfono <span class="required">*</span></label>
+          <input class="input" id="newUserPhone" name="phone" type="tel" maxlength="30" autocomplete="tel" required>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserProfession">Profesión</label>
+          <input class="input" id="newUserProfession" name="profession" maxlength="120" readonly>
+        </div>
+        <div class="field">
+          <label class="label" for="newUserSpecialty">Especialidad <span class="required" id="specialtyRequired">*</span></label>
+          <input class="input" id="newUserSpecialty" name="specialty" maxlength="120" placeholder="Ej. Medicina interna">
+        </div>
+        <div class="field">
+          <label class="label" for="newUserCmp">N.º de colegiatura (CMP)</label>
+          <input class="input" id="newUserCmp" name="cmp" maxlength="50" readonly>
+        </div>
+        <div class="field span-2">
+          <label class="label" for="newUserEstablishment">Establecimiento</label>
+          <input class="input" id="newUserEstablishment" name="establishment" maxlength="200" readonly>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:18px">
+        <button class="btn btn-primary" id="createUserSubmit" type="submit">Crear cuenta</button>
+      </div>
+      <p class="login-status" id="createUserStatus" role="status" aria-live="polite" hidden></p>
+    </form>
+  </section>
+
+  <section class="card profile-logout-card">
+    <div><div class="card-title">Cerrar sesión</div><div class="card-subtitle">Cierra tu acceso seguro a HIS MINSA en este navegador.</div></div>
+    <button class="btn btn-danger" id="logoutButton" type="button">Cerrar sesión</button>
+  </section>
+</section>

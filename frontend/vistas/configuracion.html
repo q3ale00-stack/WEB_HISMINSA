@@ -1,0 +1,21 @@
+<section id="view-config" class="view">
+  <div class="cfg-tabs" role="tablist" aria-label="Secciones de configuración">
+    <button type="button" class="cfg-tab cfg-admin active" role="tab" data-cfg-tab="estado" aria-selected="true" onclick="cambiarTabConfig('estado')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg> Estado del sistema</button>
+    <button type="button" class="cfg-tab cfg-admin" role="tab" data-cfg-tab="usuarios" aria-selected="false" onclick="cambiarTabConfig('usuarios')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><path d="M16 4.6a3.5 3.5 0 010 6.8M18 14.2a6.5 6.5 0 013.5 5.8"/></svg> Usuarios y accesos</button>
+    <button type="button" class="cfg-tab cfg-admin" role="tab" data-cfg-tab="seguridad" aria-selected="false" onclick="cambiarTabConfig('seguridad')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg> Seguridad de la sesión</button>
+    <button type="button" class="cfg-tab" role="tab" data-cfg-tab="conexion" aria-selected="false" onclick="cambiarTabConfig('conexion')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7H6a5 5 0 000 10h3M15 7h3a5 5 0 010 10h-3M8 12h8"/></svg> Conexión</button>
+  </div>
+  <div class="cfg-panel cfg-admin" id="cfgEstado" data-cfg-panel="estado"></div>
+  <div class="cfg-panel cfg-admin" id="cfgUsuarios" data-cfg-panel="usuarios" hidden></div>
+  <div class="cfg-panel cfg-admin" id="cfgSeguridad" data-cfg-panel="seguridad" hidden></div>
+  <div class="cfg-panel" data-cfg-panel="conexion" hidden>
+  <!-- Parámetros persistentes de conexión y acción para comprobar disponibilidad. -->
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Configuración de conexión</div><div class="card-subtitle">Configure la URL de la API backend conectada a SQL Server</div></div></div>
+    <div class="form-grid-2">
+      <div class="field span-full"><label class="label">URL base de la API</label><input class="input" id="apiUrlInput" placeholder="http://localhost:3000/api"></div>
+    </div>
+    <div class="actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="guardarConfig()">Guardar configuración</button><button class="btn btn-primary" onclick="probarAPI()">Probar conexión</button></div>
+  </div>
+  </div>
+</section>

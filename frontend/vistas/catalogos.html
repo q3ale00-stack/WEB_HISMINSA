@@ -1,0 +1,30 @@
+<section id="view-catalogos" class="view">
+  <div id="catalogosLista">
+    <div class="card search-card">
+      <div class="search-bar">
+        <input class="input" id="filtroCatalogos" type="search" placeholder="Filtrar catálogos por nombre o tabla" autocomplete="off" aria-label="Filtrar catálogos">
+        <div class="search-buttons"><button class="btn btn-secondary" type="button" id="limpiarFiltroCatalogos">Limpiar</button></div>
+      </div>
+      <p class="search-hint">Elige un catálogo para ver sus registros y buscar dentro de él.</p>
+    </div>
+    <div class="catalog-grid" id="catalogGrid"><div class="table-empty">Cargando catálogos…</div></div>
+  </div>
+  <div id="catalogoDetalle" hidden>
+    <div class="card catalog-panel">
+      <button type="button" class="btn btn-ghost btn-sm ficha-back" id="volverCatalogos">← Todos los catálogos</button>
+      <div class="catalog-panel-head">
+        <div><div class="ficha-eyebrow" id="catTabla"></div><h3 id="catTitulo"></h3><p class="card-subtitle" id="catDescripcion"></p></div>
+      </div>
+      <form class="search-bar" id="formCatalogo" role="search">
+        <input class="input" id="qCatalogo" type="search" placeholder="Buscar en este catálogo (código, descripción…)" autocomplete="off" aria-label="Buscar en el catálogo">
+        <div class="search-buttons">
+          <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
+          <button class="btn btn-secondary" type="reset">Limpiar</button>
+          <button class="btn btn-secondary btn-export-excel" type="button" data-export="catalogo" data-formato="excel"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg> Excel</button>
+          <button class="btn btn-secondary btn-export-pdf" type="button" data-export="catalogo" data-formato="pdf"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg> PDF</button>
+        </div>
+      </form>
+      <div id="catResultado" class="catalog-result" aria-live="polite"></div>
+    </div>
+  </div>
+</section>

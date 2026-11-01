@@ -393,7 +393,7 @@ async function cargarControlInactividad() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+alCargarVistas(() => {
   if (document.getElementById('cfgUsuarios')) activarPanelUsuarios();
 });
 
@@ -421,7 +421,7 @@ function elegirTema(tema) {
 }
 
 temaOscuroDelEquipo?.addEventListener?.('change', () => { if (leerTema() === 'auto') aplicarTema('auto'); });
-document.addEventListener('DOMContentLoaded', () => {
+alCargarVistas(() => {
   aplicarTema();
   document.querySelectorAll('[data-tema]').forEach(b => b.addEventListener('click', event => { event.stopPropagation(); elegirTema(b.dataset.tema); }));
 });

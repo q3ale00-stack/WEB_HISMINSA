@@ -16,6 +16,7 @@ router.get('/defunciones/sugerencias', dc.sugerencias);
 router.get('/defunciones/avanzada', dc.buscar);
 router.get('/defunciones', bc.buscarDefunciones);
 router.get('/personal/resumen', bc.resumenPersonal);
+router.get('/personal/sugerencias', bc.sugerenciasPersonal);
 router.get('/personal/:id/reporte-mensual', bc.reporteMensualPersonal);
 router.get('/personal', bc.buscarPersonal);
 

@@ -37,6 +37,14 @@ function adDato(etiqueta, valor, { mono = false } = {}) {
   return `<div class="vat-dato"><dt>${etiqueta}</dt><dd${mono ? ' class="mono"' : ''}>${v ? esc(v) : '<span class="vat-nd">Sin dato</span>'}</dd></div>`;
 }
 
+// Nombre del registrador (MaestroRegistrador) con su ID debajo; si no está en el maestro, solo el ID.
+function adRegistrador(r) {
+  const nombre = adTxt(r.Registrador);
+  const id = adTxt(r.Id_Registrador);
+  if (!nombre) return adDato('Registrado por (ID)', id, { mono: true });
+  return `<div class="vat-dato"><dt>Registrado por</dt><dd>${esc(nombre)}${id ? `<span class="vat-dato-id mono">ID ${esc(id)}</span>` : ''}</dd></div>`;
+}
+
 function adTarjeta(clase, icono, titulo, cuerpo, pie = '') {
   return `<section class="vat-card vat-${clase}">
     <header><span class="vat-card-icon">${icono}</span><h4>${titulo}</h4></header>
@@ -130,7 +138,7 @@ function htmlDetalleAtencion(filas, cargando) {
       </section>
       ${adTarjeta('registro', AD_ICONOS.registro, 'Registro en el HIS',
         `${adDato('Lote · página · registro', [r.Lote, r.Num_Pag, r.Num_Reg].map(adTxt).filter(Boolean).join(' · '), { mono: true })}
-         ${adDato('Registrado por (ID)', r.Id_Registrador, { mono: true })}${adDato('Fecha de registro', formatearValor(r.Fecha_Registro))}
+         ${adRegistrador(r)}${adDato('Fecha de registro', formatearValor(r.Fecha_Registro))}
          ${adDato('Última modificación', r.Fecha_Modificacion ? formatearValor(r.Fecha_Modificacion) : '')}${adDato('Aplicación de origen', r.Id_AplicacionOrigen)}${adDato('RENIPRESS', r.renipress, { mono: true })}`)}
     </div>
 

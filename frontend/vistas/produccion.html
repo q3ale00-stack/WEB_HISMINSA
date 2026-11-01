@@ -1,0 +1,435 @@
+<section id="view-reportes" class="view prod-view-dashboard">
+  <!-- Contenedor Principal del Dashboard Médico -->
+  <div class="prod-canvas-card">
+    
+    <!-- Barra Superior / Header del Dashboard -->
+    <header class="prod-canvas-header">
+      <div class="prod-header-brand">
+        <div class="prod-brand-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div class="prod-brand-text">
+          <h2 class="prod-brand-title">ANÁLISIS DE SALUD Y PRODUCCIÓN — HIS MINSA</h2>
+          <p class="prod-brand-sub">Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»</p>
+        </div>
+      </div>
+
+      <!-- Selector Central de Pestañas tipo Píldora -->
+      <nav class="prod-pill-tabs" role="tablist" aria-label="Secciones de Producción">
+        <button type="button" class="prod-pill-tab active" id="tabBtnProdTendencia" onclick="cambiarTabProduccion('tendencia')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          <span>Resumen y Tendencia</span>
+        </button>
+        <button type="button" class="prod-pill-tab" id="tabBtnProdTratamientos" onclick="cambiarTabProduccion('tratamientos')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span>Tratamientos y Procedimientos</span>
+          <span class="prod-pill-badge" id="prodBadgeTratamientos">0</span>
+        </button>
+        <button type="button" class="prod-pill-tab" id="tabBtnProdPersonal" onclick="cambiarTabProduccion('personal')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 0l-3-3m0 0l3-3m-3 3h8"/></svg>
+          <span>Personal de Salud</span>
+          <span class="prod-pill-badge" id="prodBadgePersonal">0</span>
+        </button>
+      </nav>
+
+      <!-- Meta Información y Botón de Restablecer -->
+      <div class="prod-header-meta">
+        <div class="prod-meta-updated">
+          <span class="prod-meta-label">Última actualización:</span>
+          <span class="prod-meta-time" id="prodLastUpdated">—</span>
+        </div>
+        <button type="button" class="prod-reset-btn" onclick="limpiarFiltrosProduccion()" title="Restablecer todos los filtros a sus valores iniciales">
+          <span>RESTABLECER</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Disposición Principal del Dashboard (Filtros a la Izquierda, Contenido a la Derecha) -->
+    <div class="prod-canvas-body">
+      
+      <!-- Columna Lateral Izquierda: Panel Sólido Morado (Estilo Sidebar de la Imagen) -->
+      <aside class="prod-sidebar-vibrant">
+        <!-- Encabezado Píldora: Menú de Filtros -->
+        <div class="prod-filter-pill-header">
+          <span>Menú de Filtros</span>
+        </div>
+
+        <div class="prod-filter-form">
+          <!-- Diagnóstico / Tratamiento / Procedimiento Seleccionable -->
+          <div class="prod-form-group prod-autocomplete-container" id="prodTratamientoContainer">
+            <div class="prod-field-label-row">
+              <label class="prod-field-label" for="prodFiltroTratamiento">Diagnóstico / Procedimiento</label>
+              <span class="prod-field-hint" id="prodDiagHint">Buscar o seleccionar</span>
+            </div>
+            <div class="prod-input-box">
+              <input class="prod-input" id="prodFiltroTratamiento" placeholder="Código o nombre…" autocomplete="off">
+              <input type="hidden" id="prodFiltroTratamientoCodigo" value="">
+              <button type="button" class="prod-input-clear" id="prodTratamientoClearBtn" onclick="limpiarFiltroTratamiento()" title="Quitar filtro" style="display:none;">✕</button>
+            </div>
+            <!-- Chip que muestra el diagnóstico seleccionado con exactitud -->
+            <div id="prodDiagSelectedChip" class="prod-selected-diag-chip" style="display:none;"></div>
+            <!-- Menú desplegable flotante con resultados y frecuentes -->
+            <div id="prodDiagDropdown" class="prod-diag-dropdown" style="display:none;" role="listbox"></div>
+          </div>
+
+          <!-- Selector de Año -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroAnio">Año</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroAnio" onchange="aplicarFiltrosProduccion()">
+                <option value="2026" selected>2026</option>
+                <option value="">Todos los años</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Selector de Mes -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroMes">Mes</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroMes" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todo el año</option>
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Filtro por Establecimiento -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroEstablecimiento">Establecimiento</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroEstablecimiento" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todos los establecimientos</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <!-- Filtro por Servicio / UPS -->
+          <div class="prod-form-group">
+            <label class="prod-field-label" for="prodFiltroUps">Servicio (UPS)</label>
+            <div class="prod-select-box">
+              <select class="prod-select" id="prodFiltroUps" onchange="aplicarFiltrosProduccion()">
+                <option value="">Todos los servicios</option>
+              </select>
+              <svg class="prod-select-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <input type="hidden" id="reporteDesde">
+          <input type="hidden" id="reporteHasta">
+
+          <!-- Botones de Acción de Filtro -->
+          <div class="prod-filter-btn-grid">
+            <button type="button" class="prod-btn-primary" onclick="aplicarFiltrosProduccion()" title="Consultar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              Filtrar
+            </button>
+            <button type="button" class="prod-btn-secondary" onclick="limpiarFiltrosProduccion()" title="Restablecer">
+              Limpiar
+            </button>
+          </div>
+
+          <!-- Botones de Exportación -->
+          <div class="prod-export-btn-grid">
+            <button type="button" class="prod-btn-export btn-export-excel" data-export="produccion" data-formato="excel" title="Exportar Excel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+              Excel
+            </button>
+            <button type="button" class="prod-btn-export btn-export-pdf" data-export="produccion" data-formato="pdf" title="Exportar PDF">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+              PDF
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de Filtros Activos -->
+        <div id="prodFiltrosActivosBar" class="prod-active-pill-bar" style="display:none;"></div>
+
+        <!-- Botón / Tarjeta Key Highlights -->
+        <div class="prod-sidebar-highlights">
+          <div class="prod-highlights-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Aspectos Clave</span>
+          </div>
+          <div class="prod-sidebar-meta-info">
+            <div><span class="meta-dot"></span> Base Nominal HIS MINSA</div>
+            <div>Periodo: <strong id="prodIndPeriodo">2026</strong></div>
+          </div>
+        </div>
+
+        <!-- Logotipo Institucional al pie del menú lateral -->
+        <div class="prod-sidebar-brand-foot">
+          <div class="brand-foot-circle">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </div>
+          <div class="brand-foot-text">HOSPITAL REGIONAL DE AYACUCHO</div>
+        </div>
+      </aside>
+
+      <!-- Columna Principal Derecha: KPIs y Paneles -->
+      <main class="prod-main-content">
+        <!-- 1. Cuadrícula Superior de 6 KPIs Ejecutivos (Exacto al Mockup) -->
+        <div class="prod-kpi-grid" id="reporteMetricas">
+          <div class="table-empty"><span class="spinner-sm"></span> Calculando producción asistencial...</div>
+        </div>
+
+        <!-- 2. Contenido de las Pestañas de Navegación -->
+        <div class="prod-workspace-content">
+          <!-- Pestaña 1: Resumen y Tendencia con la estructura de 3 bloques -->
+          <div class="prod-panel active" id="prodPanel-tendencia">
+            <div class="prod-dashboard-grid">
+              
+              <!-- Columna Izquierda: Donut de Distribución y Gráfico Lollipop de Tratamientos -->
+              <div class="prod-col-left">
+                <!-- 1. Distribución de Atenciones (Donut Chart) -->
+                <section class="prod-content-card">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Distribución por Establecimiento</h3>
+                      <p class="prod-card-sub">Participación porcentual en atenciones de salud</p>
+                    </div>
+                  </div>
+                  <div id="reporteDonutEstablecimientos" class="prod-donut-container"></div>
+                </section>
+
+                <!-- 2. Tratamientos y Procedimientos Frecuentes (Lollipop Chart) -->
+                <section class="prod-content-card" style="margin-top: 16px;">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Tratamientos y Procedimientos Frecuentes</h3>
+                      <p class="prod-card-sub">Procedimientos CPMS y diagnósticos CIE-10 con mayor demanda</p>
+                    </div>
+                  </div>
+                  <div id="reporteLollipopTratamientos" class="prod-lollipop-list"></div>
+                </section>
+              </div>
+
+              <!-- Columna Derecha: Evolución Temporal (Barras Verticales) y Matriz de Producción -->
+              <div class="prod-col-right">
+                <!-- 3. Evolución Temporal (Vertical Bar Chart) -->
+                <section class="prod-content-card">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title" id="reporteTendenciaTitle">Evolución de citas atendidas</h3>
+                      <p class="prod-card-sub" id="reporteTendenciaSub">Haga clic en una barra para filtrar directamente</p>
+                    </div>
+                    <div id="btnVolverMensualWrap" style="display:none;">
+                      <button type="button" class="prod-sub-btn" onclick="aplicarFiltroRapidoProd('mes', '')" title="Volver a ver todo el año">
+                        Ver año completo
+                      </button>
+                    </div>
+                  </div>
+                  <div id="reporteMeses" class="prod-vertical-chart"></div>
+                </section>
+
+                <!-- 4. Matriz de Producción Asistencial (Tabla con Totales) -->
+                <section class="prod-content-card" style="margin-top: 16px;">
+                  <div class="prod-card-header">
+                    <div>
+                      <h3 class="prod-card-title">Matriz de Producción Asistencial</h3>
+                      <p class="prod-card-sub">Resumen consolidado por centro de salud</p>
+                    </div>
+                  </div>
+                  <div class="table-wrap">
+                    <table class="prod-clean-table prod-matrix-table sortable-table" id="reporteMatrizEstablecimientos">
+                      <thead>
+                        <tr>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('nombre')" title="Clic para ordenar de menor a mayor por Establecimiento" style="min-width: 150px;"><span class="th-content"><span>Establecimiento</span><span class="th-sort-indicator" id="sortInd-estab-nombre">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('registros')" title="Clic para ordenar de menor a mayor por Registros" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-estab-registros">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-estab-atenciones">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-estab-pacientes">↕</span></span></th>
+                          <th class="sortable-th" onclick="ordenarTablaProdEstablecimientos('pct')" title="Clic para ordenar de menor a mayor por % Total" style="text-align: right; min-width: 80px;"><span class="th-content" style="justify-content: flex-end;"><span>% Total</span><span class="th-sort-indicator" id="sortInd-estab-pct">↕</span></span></th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                      <tfoot></tfoot>
+                    </table>
+                  </div>
+                  <!-- Elemento oculto para compatibilidad con llamadas existentes a reporteEstablecimientos -->
+                  <div id="reporteEstablecimientos" style="display:none;"></div>
+                </section>
+              </div>
+
+            </div>
+
+            <!-- APARTADO NOMINAL DE CITAS DEL DÍA SELECCIONADO -->
+            <section class="prod-content-card prod-dia-detalle-section" id="apartadoCitasDia" style="margin-top: 20px; display: none;" aria-labelledby="diaDetalleTitle">
+              <header class="prod-dia-header">
+                <div class="prod-dia-header-info">
+                  <div class="prod-dia-eyebrow">
+                    <span class="prod-dia-badge-dot"></span>
+                    <span id="diaDetalleFechaBadge">Día seleccionado</span>
+                    <span class="prod-dia-badge-count" id="diaDetalleCountBadge">0 citas</span>
+                  </div>
+                  <h3 class="prod-dia-title" id="diaDetalleTitle">Citas Médicas del Día</h3>
+                  <p class="prod-dia-sub" id="diaDetalleSub">Listado nominal de cada cita atendida. Haga clic en un paciente para ver su historia clínica o en un médico para ver su ficha.</p>
+                </div>
+                <div class="prod-dia-header-actions">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="volverAlGraficoProd()" title="Volver al gráfico de barras">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 15l-6-6-6 6"/></svg>
+                    <span>Volver al gráfico</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-export-excel" onclick="exportarCitasDia('excel')" title="Descargar citas de este día a Excel">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+                    <span>Excel</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-export-pdf" onclick="exportarCitasDia('pdf')" title="Descargar citas de este día a PDF">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+                    <span>PDF</span>
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="cerrarApartadoCitasDia()" title="Cerrar este apartado">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </header>
+
+              <!-- Mini KPIs del día seleccionado -->
+              <div class="prod-dia-kpi-grid" id="diaDetalleKpis"></div>
+
+              <!-- Filtros y buscador rápido del día -->
+              <div class="prod-dia-toolbar">
+                <div class="prod-dia-search-box">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-input" id="diaSearchInput" placeholder="Buscar por paciente, DNI, médico, diagnóstico, código CIE o servicio..." oninput="filtrarCitasDiaLocal()">
+                  <button type="button" class="prod-input-clear" id="diaSearchClear" onclick="limpiarBusquedaCitasDia()" style="display:none;" title="Limpiar búsqueda">✕</button>
+                </div>
+
+                <div class="prod-dia-filters">
+                  <div class="prod-select-box prod-select-compact">
+                    <select class="prod-select" id="diaFiltroServicio" onchange="filtrarCitasDiaLocal()">
+                      <option value="">Todos los servicios (UPS)</option>
+                    </select>
+                    <svg class="prod-select-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </div>
+
+                  <div class="prod-select-box prod-select-compact">
+                    <select class="prod-select" id="diaFiltroTipoDx" onchange="filtrarCitasDiaLocal()">
+                      <option value="">Todos los diagnósticos</option>
+                      <option value="D">Solo Definitivos (D)</option>
+                      <option value="P">Solo Presuntivos (P)</option>
+                      <option value="R">Solo Repetidos (R)</option>
+                    </select>
+                    <svg class="prod-select-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                  </div>
+
+                  <div class="prod-view-mode-toggle" role="group" aria-label="Modo de visualización">
+                    <button type="button" class="btn-toggle active" id="btnDiaModoCards" onclick="cambiarModoVistaDia('cards')" title="Vista Tarjetas (Agrupadas)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <span>Tarjetas</span>
+                    </button>
+                    <button type="button" class="btn-toggle" id="btnDiaModoTabla" onclick="cambiarModoVistaDia('tabla')" title="Vista Tabla Compacta">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      <span>Tabla</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Barra de estado y selector de páginas -->
+              <div class="prod-dia-status-row">
+                <span id="diaResultSummary" class="prod-dia-summary-text">Cargando citas...</span>
+                <div class="prod-dia-page-size">
+                  <label for="diaPageSizeSelect">Citas por página:</label>
+                  <select id="diaPageSizeSelect" class="prod-select-xs" onchange="cambiarPageSizeDia(this.value)">
+                    <option value="25" selected>25 citas</option>
+                    <option value="50">50 citas</option>
+                    <option value="100">100 citas</option>
+                    <option value="all">Todas</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Contenedor dinámico de citas (cards o tabla) -->
+              <div id="diaCitasContent" class="prod-dia-content-box">
+                <div class="table-empty"><span class="spinner-sm"></span> Cargando citas médicas del día...</div>
+              </div>
+
+              <!-- Paginación -->
+              <div class="prod-dia-pagination" id="diaPagination" style="display:none;"></div>
+            </section>
+          </div>
+
+          <!-- Pestaña 2: Tratamientos, Procedimientos CPMS y Diagnósticos CIE-10 -->
+          <div class="prod-panel" id="prodPanel-tratamientos" style="display:none;">
+            <section class="prod-content-card">
+              <div class="prod-card-header">
+                <div>
+                  <h3 class="prod-card-title">Tratamientos, Procedimientos y Diagnósticos Frecuentes</h3>
+                  <p class="prod-card-sub">Volumen de registros HIS, citas atendidas y pacientes únicos</p>
+                </div>
+                <div class="prod-table-search-wrap">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-table-search-input" id="buscarEnTablaTratamientos" placeholder="Filtrar en esta tabla..." oninput="filtrarTablaTratamientosLocal(this.value)">
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reporteDiagnosticosTabla" class="prod-clean-table sortable-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('codigo')" title="Clic para ordenar de menor a mayor por Código" style="min-width: 90px;"><span class="th-content"><span>Código</span><span class="th-sort-indicator" id="sortInd-diag-codigo">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('descripcion')" title="Clic para ordenar de menor a mayor por Descripción" style="min-width: 250px;"><span class="th-content"><span>Descripción del Tratamiento / Procedimiento</span><span class="th-sort-indicator" id="sortInd-diag-descripcion">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('tipo')" title="Clic para ordenar de menor a mayor por Tipo" style="min-width: 85px;"><span class="th-content"><span>Tipo</span><span class="th-sort-indicator" id="sortInd-diag-tipo">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('registros')" title="Clic para ordenar de menor a mayor por Registros" style="min-width: 100px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-diag-registros">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-diag-atenciones">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdDiagnosticos('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-diag-pacientes">↕</span></span></th>
+                      <th style="min-width: 140px; text-align: right;" data-no-sort="true">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <!-- Pestaña 3: Rendimiento de Personal de Salud -->
+          <div class="prod-panel" id="prodPanel-personal" style="display:none;">
+            <section class="prod-content-card">
+              <div class="prod-card-header">
+                <div>
+                  <h3 class="prod-card-title">Producción por personal de salud</h3>
+                  <p class="prod-card-sub">Actividad y pacientes atendidos por cada profesional de la salud</p>
+                </div>
+                <div class="prod-table-search-wrap">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input type="search" class="prod-table-search-input" id="buscarEnTablaPersonal" placeholder="Filtrar por profesional o DNI..." oninput="filtrarTablaPersonalLocal(this.value)">
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="reportePersonalTabla" class="prod-clean-table sortable-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('nombre')" title="Clic para ordenar de menor a mayor por Profesional" style="min-width: 180px;"><span class="th-content"><span>Profesional</span><span class="th-sort-indicator" id="sortInd-pers-nombre">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('documento')" title="Clic para ordenar de menor a mayor por Documento" style="min-width: 100px;"><span class="th-content"><span>Documento</span><span class="th-sort-indicator" id="sortInd-pers-documento">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('profesion')" title="Clic para ordenar de menor a mayor por Profesión" style="min-width: 140px;"><span class="th-content"><span>Profesión</span><span class="th-sort-indicator" id="sortInd-pers-profesion">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('registros')" title="Clic para ordenar de menor a mayor por Registros" style="min-width: 100px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Registros</span><span class="th-sort-indicator" id="sortInd-pers-registros">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('atenciones')" title="Clic para ordenar de menor a mayor por Citas" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Citas</span><span class="th-sort-indicator" id="sortInd-pers-atenciones">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('pacientes')" title="Clic para ordenar de menor a mayor por Pacientes" style="min-width: 90px; text-align: right;"><span class="th-content" style="justify-content: flex-end;"><span>Pacientes</span><span class="th-sort-indicator" id="sortInd-pers-pacientes">↕</span></span></th>
+                      <th class="sortable-th" onclick="ordenarTablaProdPersonal('ultimaAtencion')" title="Clic para ordenar de menor a mayor por Última atención" style="min-width: 110px;"><span class="th-content"><span>Última atención</span><span class="th-sort-indicator" id="sortInd-pers-ultimaAtencion">↕</span></span></th>
+                      <th style="min-width: 210px; text-align: right;" data-no-sort="true">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</section>
