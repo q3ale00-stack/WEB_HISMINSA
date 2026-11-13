@@ -2,6 +2,7 @@
 // Solo lectura. Todos los valores llegan como parámetros; los nombres de columnas opcionales se comprueban en sys.columns.
 const { sql, poolPromise, withTransientRetry } = require('../config/db');
 const cache = require('../config/cache');
+const alcance = require('./alcance');
 
 const MAX_TEXTO = 100;
 const TAMANOS_PAGINA = [50, 100, 200];
@@ -229,6 +230,18 @@ function armarFiltros(query) {
 
 const conParams = (request, params) => { params.forEach(par => request.input(par.nombre, par.tipo, par.valor)); return request; };
 
+// Alcance de un médico «solo sus pacientes» (ver alcance.js). Desde Pacientes ve los registros de los pacientes
+// que atendió (su historia completa); desde Atenciones y Personal, solo sus propias atenciones.
+// Para los demás usuarios no cambia nada. Se suma con AND a los filtros elegidos.
+function filtroAlcance(req, filtros) {
+  if (!alcance.esLimitado(req)) return filtros;
+  const par = { nombre: 'miPersonal', tipo: sql.NVarChar(50), valor: alcance.miPersonal(req) };
+  const cond = req.query.vista === 'pacientes'
+    ? 'EXISTS (SELECT 1 FROM NProduccion mio WHERE mio.Id_Paciente = n.Id_Paciente AND mio.Id_Personal = @miPersonal)'
+    : 'n.Id_Personal = @miPersonal';
+  return { ...filtros, where: `${filtros.where || 'WHERE 1 = 1'}\n    AND ${cond}`, params: [...filtros.params, par] };
+}
+
 // GET /api/nominal?filtros…&pagina=1&tam=100   |   &exportar=1 (hasta 5000 filas, sin total)
 async function buscar(req, res) {
   let filtros;
@@ -241,6 +254,7 @@ async function buscar(req, res) {
   if (!filtros.params.length && !filtros.where) {
     return res.status(400).json({ message: 'Elige al menos un filtro (por ejemplo el año o el mes) antes de buscar.' });
   }
+  filtros = filtroAlcance(req, filtros);
   const exportar = req.query.exportar === '1';
   const tam = exportar ? MAX_EXPORTAR : (TAMANOS_PAGINA.includes(Number(req.query.tam)) ? Number(req.query.tam) : 100);
   const pagina = exportar ? 1 : Math.max(1, Math.min(100000, Number.parseInt(req.query.pagina, 10) || 1));
@@ -357,25 +371,31 @@ async function sugerencias(req, res) {
     terminos.forEach((t, i) => request.input(`t${i}`, sql.NVarChar(MAX_TEXTO + 2), `%${t}%`));
     request.input('inicio', sql.NVarChar(MAX_TEXTO + 1), `${valor}%`);
     const porNombre = (alias, sufijo) => terminos.map((_, i) => `CONCAT(${alias}.Apellido_Paterno_${sufijo}, ' ', ${alias}.Apellido_Materno_${sufijo}, ' ', ${alias}.Nombres_${sufijo}) LIKE @t${i}`).join(' AND ');
+    // Médico «solo sus pacientes»: sugiere solo a sus pacientes, a sí mismo y a quienes registraron sus atenciones.
+    const limitado = alcance.esLimitado(req);
+    if (limitado) request.input('miPersonal', sql.NVarChar(50), alcance.miPersonal(req));
+    const soloMisPacientes = limitado ? ' AND EXISTS (SELECT 1 FROM NProduccion mio WHERE mio.Id_Paciente = pac.Id_Paciente AND mio.Id_Personal = @miPersonal)' : '';
+    const soloYo = limitado ? ' AND per.Id_Personal = @miPersonal' : '';
+    const soloMisRegistradores = limitado ? ' AND reg.Id_Registrador IN (SELECT DISTINCT mio.Id_Registrador FROM NProduccion mio WHERE mio.Id_Personal = @miPersonal)' : '';
     let consulta;
     switch (campo) {
       case 'paciente':
         consulta = `SELECT TOP (15) pac.Id_Paciente AS id, pac.Numero_Documento_Paciente AS documento, ${NOMBRE_PACIENTE} AS nombre,
           CONCAT('ID ', pac.Id_Paciente, CASE WHEN NULLIF(LTRIM(RTRIM(pac.Historia_Clinica)), '') IS NOT NULL THEN CONCAT(' · H.C. ', pac.Historia_Clinica) ELSE '' END) AS detalle
-          FROM MaestroPaciente pac WHERE pac.Numero_Documento_Paciente LIKE @inicio OR (${porNombre('pac', 'Paciente')}) ORDER BY nombre`;
+          FROM MaestroPaciente pac WHERE (pac.Numero_Documento_Paciente LIKE @inicio OR (${porNombre('pac', 'Paciente')}))${soloMisPacientes} ORDER BY nombre`;
         break;
       case 'historia':
         consulta = `SELECT TOP (15) pac.Historia_Clinica AS id, pac.Numero_Documento_Paciente AS documento, ${NOMBRE_PACIENTE} AS nombre
-          FROM MaestroPaciente pac WHERE pac.Historia_Clinica LIKE @inicio ORDER BY pac.Historia_Clinica`;
+          FROM MaestroPaciente pac WHERE pac.Historia_Clinica LIKE @inicio${soloMisPacientes} ORDER BY pac.Historia_Clinica`;
         break;
       case 'personal':
         consulta = `SELECT TOP (15) per.Id_Personal AS id, per.Numero_Documento_Personal AS documento, ${NOMBRE_PERSONAL} AS nombre, prof.Descripcion_Profesion AS detalle
           FROM MaestroPersonal per OUTER APPLY (SELECT TOP (1) pr.Descripcion_Profesion FROM MAESTRO_HIS_PROFESION pr WHERE pr.Id_Profesion = per.Id_Profesion) prof
-          WHERE per.Numero_Documento_Personal LIKE @inicio OR CONVERT(nvarchar(50), per.Id_Personal) LIKE @inicio OR (${porNombre('per', 'Personal')}) ORDER BY nombre`;
+          WHERE (per.Numero_Documento_Personal LIKE @inicio OR CONVERT(nvarchar(50), per.Id_Personal) LIKE @inicio OR (${porNombre('per', 'Personal')}))${soloYo} ORDER BY nombre`;
         break;
       case 'registrador':
         consulta = `SELECT TOP (15) reg.Id_Registrador AS id, ${esq.docRegistrador ? `reg.${q(esq.docRegistrador)}` : 'reg.Id_Registrador'} AS documento, ${NOMBRE_REGISTRADOR} AS nombre
-          FROM MaestroRegistrador reg WHERE reg.Id_Registrador LIKE @inicio ${esq.docRegistrador ? `OR reg.${q(esq.docRegistrador)} LIKE @inicio` : ''} OR (${porNombre('reg', 'Registrador')}) ORDER BY nombre`;
+          FROM MaestroRegistrador reg WHERE (reg.Id_Registrador LIKE @inicio ${esq.docRegistrador ? `OR reg.${q(esq.docRegistrador)} LIKE @inicio` : ''} OR (${porNombre('reg', 'Registrador')}))${soloMisRegistradores} ORDER BY nombre`;
         break;
       case 'codigo':
         consulta = `SELECT TOP (15) ci.Codigo_Item AS id, ci.Codigo_Item AS documento, MAX(ci.Descripcion_Item) AS nombre

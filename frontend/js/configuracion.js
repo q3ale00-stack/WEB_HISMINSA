@@ -168,6 +168,11 @@ function htmlUsuarios(lista) {
       <td><select class="input cfg-rol" data-cfg-rol="${i}" ${u.esUstedMismo ? 'disabled title="No puedes cambiar tu propio rol"' : ''} aria-label="Rol de ${esc(u.nombre)}">
         <option value="admin"${u.rol === 'admin' ? ' selected' : ''}>Administrador</option>
         <option value="doctor"${u.rol === 'doctor' ? ' selected' : ''}>Médico</option></select></td>
+      <td>${u.rol === 'admin'
+        ? '<span class="cfg-muted" title="Los administradores siempre tienen acceso completo">Completo</span>'
+        : `<select class="input cfg-rol" data-cfg-acceso="${i}" aria-label="Acceso de ${esc(u.nombre)}" title="Solo sus pacientes: ve sus atenciones y la historia de los pacientes que atendió">
+        <option value="completo"${u.acceso === 'completo' ? ' selected' : ''}>Completo</option>
+        <option value="restringido"${u.acceso === 'restringido' ? ' selected' : ''}>Solo sus pacientes</option></select>`}</td>
       <td><label class="cfg-switch" title="${u.esUstedMismo ? 'No puedes desactivar tu propia cuenta' : u.activo ? 'Desactivar' : 'Activar'}">
         <input type="checkbox" data-cfg-activo="${i}" ${u.activo ? 'checked' : ''} ${u.esUstedMismo ? 'disabled' : ''}><span class="cfg-switch-ui" aria-hidden="true"></span>
         <span class="cfg-switch-text">${u.activo ? 'Activo' : 'Inactivo'}</span></label></td>
@@ -188,7 +193,7 @@ function htmlUsuarios(lista) {
     </div>
     <div class="cfg-table-wrap">
       <table class="cfg-table">
-        <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th class="cfg-center">Sesiones abiertas</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Usuario</th><th>Rol</th><th>Acceso</th><th>Estado</th><th>Último acceso</th><th class="cfg-center">Sesiones abiertas</th><th>Acciones</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
     </div>`;
@@ -272,6 +277,11 @@ function activarPanelUsuarios() {
     if (rol) {
       const u = CFG.usuarios[Number(rol.dataset.cfgRol)];
       cfgActualizarUsuario(u, { rol: rol.value }, `${u.nombre} ahora es ${rol.value === 'admin' ? 'Administrador' : 'Médico'}.`);
+    }
+    const acceso = event.target.closest('[data-cfg-acceso]');
+    if (acceso) {
+      const u = CFG.usuarios[Number(acceso.dataset.cfgAcceso)];
+      cfgActualizarUsuario(u, { acceso: acceso.value }, `${u.nombre} ahora tiene acceso ${acceso.value === 'restringido' ? 'solo a sus pacientes' : 'completo'}. Rige de inmediato; su menú se actualiza cuando recargue la página.`);
     }
     const activo = event.target.closest('[data-cfg-activo]');
     if (activo) {

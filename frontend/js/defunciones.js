@@ -4,7 +4,7 @@
 // Búsqueda por texto o por periodo, resumen de los resultados, tabla con causa básica y detalle con la cadena de causas.
 // La pestaña «Búsqueda avanzada» combina filtros (fecha, persona, causa y lugar) con resumen calculado en el servidor.
 // Usa funciones globales de app.js: apiFetch, esc, gv, formatNumber, formatearValor, toast, abrirModal, factGrid, pickKeys,
-// exportadores, exportarDocumento, botonesExportarHtml, nombreFallecido, searchSeq, buscarPacienteSimple; de nominal.js: esRolMedico;
+// exportadores, exportarDocumento, botonesExportarHtml, nombreFallecido, searchSeq, buscarPacienteSimple; de nominal.js: accesoRestringido;
 // de historial.js: histIcono.
 
 // Estado de la búsqueda simple. La avanzada usa DEFA (más abajo); ambas comparten el render de resultados.
@@ -52,11 +52,11 @@ const defIniciales = nombre => {
   return p.length ? (p[0][0] + (p.length > 1 ? p[p.length - 2][0] : '')).toUpperCase() : '?';
 };
 
-// ── Pestañas: «simple» (buscador) y «filtros» (búsqueda avanzada; mismo criterio de rol que Pacientes) ──
+// ── Pestañas: «simple» (buscador) y «filtros» (búsqueda avanzada; mismo criterio de acceso que Pacientes) ──
 function cambiarTabDefunciones(tab, { recordar = true } = {}) {
-  if (tab !== 'filtros' || esRolMedico()) tab = 'simple';
+  if (tab !== 'filtros' || accesoRestringido()) tab = 'simple';
   const avanzada = document.getElementById('defTabAvanzada');
-  if (avanzada) avanzada.hidden = esRolMedico();
+  if (avanzada) avanzada.hidden = accesoRestringido();
   document.querySelectorAll('[data-def-tab]').forEach(b => {
     const activa = b.dataset.defTab === tab;
     b.classList.toggle('active', activa);

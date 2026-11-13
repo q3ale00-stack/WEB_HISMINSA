@@ -17,7 +17,13 @@ const PFS = {
   seq: 0,
   sugSeq: 0,
   sugTimer: null,
-  sugerencias: []
+  sugerencias: [],
+  total: 0,           // citas reales con el periodo y la búsqueda actuales (las da el servidor)
+  resumen: null,
+  periodosN: null,    // citas por periodo (del servidor), sin depender de la búsqueda
+  pagina: 0,
+  cargaSeq: 0,
+  cargando: false
 };
 
 const PFS_RECIENTES_CLAVE = 'his_per_recientes';
@@ -264,6 +270,10 @@ function abrirPersonalSimple(p) {
   PFS.atenciones = [];
   PFS.periodo = 'todo';
   PFS.texto = '';
+  PFS.total = 0;
+  PFS.resumen = null;
+  PFS.periodosN = null;
+  PFS.pagina = 0;
   document.getElementById('perPanelSimple')?.classList.add('ps-con-paciente');
   pfsGuardarReciente(p);
   pfsRenderRecientes();
@@ -337,31 +347,58 @@ function abrirPersonalSimple(p) {
   let buscarTimer = null;
   res.querySelector('#pfsBuscarHist').addEventListener('input', event => {
     clearTimeout(buscarTimer);
-    buscarTimer = setTimeout(() => { PFS.texto = event.target.value.trim(); if (PFS.atenciones.length) pfsRenderHistorial(); }, 200);
+    buscarTimer = setTimeout(() => { PFS.texto = event.target.value.trim(); pfsRecargar(); }, 350);
   });
   res.scrollIntoView({ behavior: 'smooth', block: 'start' });
   pfsCargarAtenciones(p, seq);
 }
 
-async function pfsCargarAtenciones(p, seq) {
+// Atenciones del profesional, paginadas por cita en el servidor: el total, los periodos y el resumen son los reales
+// (antes se calculaban con las primeras 1 000 anotaciones y salían cortos). La búsqueda también la hace el servidor.
+const PFS_PASO = 20;
+
+function pfsDesdePeriodo(clave) {
+  const meses = PS_PERIODOS.find(p => p[0] === clave)?.[2];
+  if (!meses) return '';
+  const d = new Date();
+  d.setMonth(d.getMonth() - meses);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function pfsCargarAtenciones(p, seq, { siguiente = false } = {}) {
+  const carga = ++PFS.cargaSeq;
+  const pagina = siguiente ? PFS.pagina + 1 : 1;
+  const params = new URLSearchParams({ personal: String(p.Id_Personal ?? ''), pagina: String(pagina), tam: String(PFS_PASO) });
+  const desde = pfsDesdePeriodo(PFS.periodo);
+  if (desde) params.set('desde', desde);
+  if (PFS.texto) params.set('texto', PFS.texto);
+  if (!siguiente) params.set('resumen', '1');
+  if (!PFS.periodosN) params.set('periodos', '1');
+  PFS.cargando = true;
+  if (!siguiente && PFS.atenciones.length) document.getElementById('pfsTimeline')?.classList.add('nom-cargando');
   try {
-    const filas = await apiFetch(`/busqueda/atenciones?personal=${encodeURIComponent(p.Id_Personal)}`);
-    if (seq !== PFS.seq) return;
-    PFS.atenciones = filas;
+    const datos = await apiFetch(`/busqueda/atenciones/citas?${params}`);
+    if (seq !== PFS.seq || carga !== PFS.cargaSeq) return;
+    PFS.atenciones = siguiente ? [...PFS.atenciones, ...datos.filas] : datos.filas;
+    PFS.total = datos.totalCitas;
+    PFS.pagina = pagina;
+    if (datos.resumen) PFS.resumen = datos.resumen;
+    if (datos.periodos) PFS.periodosN = datos.periodos;
+    PFS.cargando = false;
     pfsRenderHistorial();
   } catch (error) {
-    if (seq === PFS.seq) document.getElementById('pfsTimeline').innerHTML = `<div class="ps-vacio"><h3>No se pudieron cargar las atenciones</h3><p>${esc(error.message || '')}</p></div>`;
+    if (seq !== PFS.seq || carga !== PFS.cargaSeq) return;
+    PFS.cargando = false;
+    if (siguiente) { toast(error.message || 'No se pudieron cargar más atenciones.', 'error'); pfsRenderHistorial(); return; }
+    document.getElementById('pfsTimeline').innerHTML = `<div class="ps-vacio"><h3>No se pudieron cargar las atenciones</h3><p>${esc(error.message || '')}</p></div>`;
+  } finally {
+    document.getElementById('pfsTimeline')?.classList.remove('nom-cargando');
   }
 }
 
-// Atenciones dentro del periodo elegido (contado desde hoy).
-function pfsFiltrarPeriodo(clave) {
-  const meses = PS_PERIODOS.find(p => p[0] === clave)?.[2];
-  if (!meses) return PFS.atenciones;
-  const desde = new Date();
-  desde.setMonth(desde.getMonth() - meses);
-  const limite = `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, '0')}-${String(desde.getDate()).padStart(2, '0')}`;
-  return PFS.atenciones.filter(r => histFechaIso(r.Fecha_Atencion) >= limite);
+// Cambiar de periodo o de búsqueda vuelve a pedir la primera página.
+function pfsRecargar() {
+  if (PFS.personal) pfsCargarAtenciones(PFS.personal, PFS.seq);
 }
 
 function pfsRenderHistorial() {
@@ -372,18 +409,23 @@ function pfsRenderHistorial() {
   if (frecuentes) frecuentes.hidden = true;
   const periodos = document.getElementById('pfsPeriodos');
   periodos.innerHTML = PS_PERIODOS.map(([clave, texto]) => {
-    const n = histContarCitas(pfsFiltrarPeriodo(clave));
-    return `<button type="button" class="ps-periodo${PFS.periodo === clave ? ' on' : ''}" data-periodo="${clave}" aria-pressed="${PFS.periodo === clave}">${texto}<span>${formatNumber(n)}</span></button>`;
+    const n = PFS.periodosN?.[clave];
+    return `<button type="button" class="ps-periodo${PFS.periodo === clave ? ' on' : ''}" data-periodo="${clave}" aria-pressed="${PFS.periodo === clave}">${texto}<span>${n === undefined ? '…' : formatNumber(n)}</span></button>`;
   }).join('');
-  periodos.querySelectorAll('[data-periodo]').forEach(b => b.addEventListener('click', () => { PFS.periodo = b.dataset.periodo; pfsRenderHistorial(); }));
+  periodos.querySelectorAll('[data-periodo]').forEach(b => b.addEventListener('click', () => {
+    if (PFS.periodo === b.dataset.periodo) return;
+    PFS.periodo = b.dataset.periodo;
+    pfsRecargar();
+  }));
 
-  const enPeriodo = pfsFiltrarPeriodo(PFS.periodo);
-  const filas = histFiltrarTexto(enPeriodo, PFS.texto);
+  const filas = PFS.atenciones;
   const periodoTexto = PS_PERIODOS.find(x => x[0] === PFS.periodo)[1];
+  const cargadas = histContarCitas(filas);
   registrarExportAtenciones('pfsHistorial', filas, 'Reporte de atenciones del personal de salud', [
     ['Personal de salud', nombrePersonal(p)], ['DNI', p.Numero_Documento_Personal], ['ID personal', p.Id_Personal],
     ['Profesión', p.Profesion], ['Colegiatura', p.Numero_Colegiatura], ['Establecimiento', p.Establecimiento], ['Periodo', periodoTexto],
-    ...(PFS.texto ? [['Búsqueda', PFS.texto]] : [])
+    ...(PFS.texto ? [['Búsqueda', PFS.texto]] : []),
+    ...(cargadas < PFS.total ? [['Nota', `Incluye las ${formatNumber(cargadas)} atenciones cargadas de ${formatNumber(PFS.total)}. Pulsa «Ver más» para incluir más.`]] : [])
   ], 'atenciones-personal');
   document.getElementById('pfsAccionesHistorial').innerHTML = filas.length
     ? `<button type="button" class="btn btn-primary ps-imprimir" data-export="pfsHistorial" data-formato="pdf">
@@ -393,18 +435,20 @@ function pfsRenderHistorial() {
     : '';
 
   const timeline = document.getElementById('pfsTimeline');
-  if (!PFS.atenciones.length) { timeline.innerHTML = '<div class="ps-vacio"><h3>Este profesional no tiene atenciones registradas</h3></div>'; return; }
-  if (!enPeriodo.length) {
-    timeline.innerHTML = `<div class="ps-vacio"><h3>No tiene atenciones en «${esc(periodoTexto.toLowerCase())}»</h3><button type="button" class="btn btn-secondary" data-periodo-todo>Ver todas las atenciones</button></div>`;
-    timeline.querySelector('[data-periodo-todo]').addEventListener('click', () => { PFS.periodo = 'todo'; pfsRenderHistorial(); });
-    return;
-  }
   if (!filas.length) {
-    timeline.innerHTML = `<div class="ps-vacio"><h3>Ninguna atención coincide con «${esc(PFS.texto)}»</h3><button type="button" class="btn btn-secondary" data-quitar-busqueda>Quitar búsqueda</button></div>`;
-    timeline.querySelector('[data-quitar-busqueda]').addEventListener('click', () => { PFS.texto = ''; document.getElementById('pfsBuscarHist').value = ''; pfsRenderHistorial(); });
+    if (PFS.texto) {
+      timeline.innerHTML = `<div class="ps-vacio"><h3>Ninguna atención coincide con «${esc(PFS.texto)}»</h3><button type="button" class="btn btn-secondary" data-quitar-busqueda>Quitar búsqueda</button></div>`;
+      timeline.querySelector('[data-quitar-busqueda]').addEventListener('click', () => { PFS.texto = ''; document.getElementById('pfsBuscarHist').value = ''; pfsRecargar(); });
+    } else if (PFS.periodo !== 'todo') {
+      timeline.innerHTML = `<div class="ps-vacio"><h3>No tiene atenciones en «${esc(periodoTexto.toLowerCase())}»</h3><button type="button" class="btn btn-secondary" data-periodo-todo>Ver todas las atenciones</button></div>`;
+      timeline.querySelector('[data-periodo-todo]').addEventListener('click', () => { PFS.periodo = 'todo'; pfsRecargar(); });
+    } else {
+      timeline.innerHTML = '<div class="ps-vacio"><h3>Este profesional no tiene atenciones registradas</h3></div>';
+    }
     return;
   }
-  const limite = 1000;
-  const aviso = PFS.atenciones.length >= limite ? `<p class="ps-tip">Se muestran las ${formatNumber(limite)} anotaciones más recientes del profesional.</p>` : '';
-  histPintar(timeline, filas, { contexto: 'personal', establecimiento: p.Establecimiento, resumenEn: resumen, frecuentesEn: frecuentes }, aviso);
+  histPintar(timeline, filas, {
+    contexto: 'personal', establecimiento: p.Establecimiento, resumenEn: resumen, frecuentesEn: frecuentes,
+    servidor: { total: PFS.total, resumen: PFS.resumen, paso: PFS_PASO, onMas: () => pfsCargarAtenciones(p, PFS.seq, { siguiente: true }) }
+  });
 }

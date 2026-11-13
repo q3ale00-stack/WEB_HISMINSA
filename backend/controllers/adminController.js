@@ -86,14 +86,14 @@ async function listarUsuarios(req, res) {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT u.IdUsuario, u.Username, u.FullName, u.Role, u.Dni, u.Email, u.Phone, u.Profession, u.IsActive, u.CreatedAt,
+      SELECT u.IdUsuario, u.Username, u.FullName, u.Role, u.Dni, u.Email, u.Phone, u.Profession, u.Acceso, u.IsActive, u.CreatedAt,
              (SELECT MAX(a.Fecha) FROM dbo.HisAccesos a WHERE a.IdUsuario = u.IdUsuario AND a.Exito = 1) AS UltimoAcceso,
              (SELECT COUNT(*) FROM dbo.HisSesiones s WHERE s.IdUsuario = u.IdUsuario AND s.ExpiresAt > SYSUTCDATETIME()) AS SesionesActivas
       FROM dbo.HisUsuarios u
       ORDER BY u.IsActive DESC, u.FullName`);
     res.status(200).json(result.recordset.map(u => ({
       id: u.IdUsuario, usuario: u.Username, nombre: u.FullName, rol: u.Role, dni: u.Dni, email: u.Email, telefono: u.Phone,
-      profesion: u.Profession, activo: Boolean(u.IsActive), creado: u.CreatedAt, ultimoAcceso: u.UltimoAcceso,
+      profesion: u.Profession, acceso: u.Role === 'admin' ? 'completo' : (u.Acceso || 'completo'), activo: Boolean(u.IsActive), creado: u.CreatedAt, ultimoAcceso: u.UltimoAcceso,
       sesionesActivas: Number(u.SesionesActivas || 0), esUstedMismo: u.IdUsuario === req.user.id
     })));
   } catch (error) {
@@ -107,13 +107,14 @@ const idDe = req => {
   return Number.isInteger(id) && id > 0 ? id : null;
 };
 
-// PATCH /api/admin/usuarios/:id  { activo?: boolean, rol?: 'admin'|'doctor' }
+// PATCH /api/admin/usuarios/:id  { activo?: boolean, rol?: 'admin'|'doctor', acceso?: 'completo'|'restringido' }
 async function actualizarUsuario(req, res) {
   const id = idDe(req);
   if (!id) return res.status(400).json({ message: 'Usuario no válido.' });
-  const { activo, rol } = req.body || {};
-  if (activo === undefined && rol === undefined) return res.status(400).json({ message: 'No se indicó ningún cambio.' });
+  const { activo, rol, acceso } = req.body || {};
+  if (activo === undefined && rol === undefined && acceso === undefined) return res.status(400).json({ message: 'No se indicó ningún cambio.' });
   if (rol !== undefined && !['admin', 'doctor'].includes(rol)) return res.status(400).json({ message: 'Rol no válido.' });
+  if (acceso !== undefined && !['completo', 'restringido'].includes(acceso)) return res.status(400).json({ message: 'Nivel de acceso no válido.' });
   if (activo !== undefined && typeof activo !== 'boolean') return res.status(400).json({ message: 'Estado no válido.' });
   if (id === req.user.id && (activo === false || rol === 'doctor')) {
     return res.status(400).json({ message: 'No puedes desactivar ni quitarte el rol de administrador a ti mismo.' });
@@ -133,6 +134,7 @@ async function actualizarUsuario(req, res) {
     const sets = [];
     if (activo !== undefined) { request.input('activo', sql.Bit, activo ? 1 : 0); sets.push('IsActive = @activo'); }
     if (rol !== undefined) { request.input('rol', sql.NVarChar(20), rol); sets.push('Role = @rol'); }
+    if (acceso !== undefined) { request.input('acceso', sql.NVarChar(20), acceso); sets.push('Acceso = @acceso'); }
     const result = await request.query(`UPDATE dbo.HisUsuarios SET ${sets.join(', ')} WHERE IdUsuario = @id;
       ${activo === false ? 'DELETE FROM dbo.HisSesiones WHERE IdUsuario = @id;' : ''}`);
     if (!result.rowsAffected[0]) return res.status(404).json({ message: 'El usuario no existe.' });

@@ -1,6 +1,7 @@
 // Búsquedas de pacientes, atenciones, defunciones y personal (tomadas del proyecto HIS).
 // Solo lectura: cada búsqueda usa parámetros y un tope de filas para no saturar SQL Server.
 const { sql, poolPromise, withTransientRetry } = require('../config/db');
+const alcance = require('./alcance');
 
 const MAX_PACIENTES = 100;
 const MAX_PERSONAL = 100;
@@ -102,6 +103,7 @@ const buscarPacientes = async (req, res) => {
     const result = await withTransientRetry(() => {
       const request = pool.request().input('q', sql.NVarChar(MAX_TEXTO + 2), `%${q}%`);
       const terminos = agregarTerminos(request, q);
+      const soloMios = alcance.filtroPacientes(req, request, 'MaestroPaciente.Id_Paciente');
       const porTerminos = terminos.map((_, index) => `(
         Nombres_Paciente LIKE @t${index}
         OR Apellido_Paterno_Paciente LIKE @t${index}
@@ -110,11 +112,11 @@ const buscarPacientes = async (req, res) => {
       return request.query(`
         SELECT TOP (${MAX_PACIENTES}) *
         FROM MaestroPaciente
-        WHERE Id_Paciente LIKE @q
+        WHERE (Id_Paciente LIKE @q
            OR Numero_Documento_Paciente LIKE @q
            OR Historia_Clinica LIKE @q
            OR Ficha_Familiar LIKE @q
-           OR (${porTerminos})
+           OR (${porTerminos}))${soloMios}
         ORDER BY Apellido_Paterno_Paciente, Apellido_Materno_Paciente, Nombres_Paciente
       `);
     });
@@ -167,13 +169,54 @@ const sugerenciasPacientes = async (req, res) => {
         OUTER APPLY (SELECT TOP (1) e.Nombre_Establecimiento FROM MAESTRO_HIS_ESTABLECIMIENTO e WHERE e.Id_Establecimiento = p.Id_Establecimiento) est
         OUTER APPLY (SELECT MAX(n.Fecha_Atencion) AS UltimaAtencion, COUNT(DISTINCT n.Id_Cita) AS Atenciones FROM NProduccion n WHERE n.Id_Paciente = p.Id_Paciente) ult
         CROSS APPLY (SELECT ${coincidencia} AS Palabras) rel
-        WHERE ${where}
+        WHERE (${where})${alcance.filtroPacientes(req, request, 'p.Id_Paciente')}
         ORDER BY rel.Palabras DESC, CASE WHEN ult.UltimaAtencion IS NULL THEN 1 ELSE 0 END, ult.UltimaAtencion DESC, Paciente
       `);
     });
     res.status(200).json(result.recordset);
   } catch (error) {
     responderError(res, error, 'pacientes');
+  }
+};
+
+// GET /api/busqueda/mis-pacientes?pagina=1&tam=20
+// Lista de «Mis pacientes»: los que atendió el profesional de la cuenta, del más reciente al más antiguo según su
+// última atención. Mismas columnas que las sugerencias, pero UltimaAtencion y Atenciones son las suyas con ese paciente.
+const misPacientes = async (req, res) => {
+  const personalId = String(req.user?.personalId || '').trim();
+  if (!personalId) return res.status(200).json({ total: 0, filas: [], sinPersonal: true });
+  const tam = Math.min(100, Math.max(1, Number.parseInt(req.query.tam, 10) || 20));
+  const pagina = Math.min(10000, Math.max(1, Number.parseInt(req.query.pagina, 10) || 1));
+  try {
+    const pool = await poolPromise;
+    const result = await withTransientRetry(() => pool.request()
+      .input('miPersonal', sql.NVarChar(50), personalId)
+      .input('offset', sql.Int, (pagina - 1) * tam)
+      .input('tam', sql.Int, tam)
+      .query(`
+        WITH mios AS (
+          SELECT n.Id_Paciente, MAX(n.Fecha_Atencion) AS UltimaAtencion, COUNT(DISTINCT n.Id_Cita) AS Atenciones
+          FROM NProduccion n
+          WHERE n.Id_Personal = @miPersonal AND n.Id_Paciente IS NOT NULL
+          GROUP BY n.Id_Paciente
+        )
+        SELECT
+          p.Id_Paciente, p.Numero_Documento_Paciente AS Documento, p.Historia_Clinica, p.Ficha_Familiar,
+          ${NOMBRE_PACIENTE.replace(/pac\./g, 'p.')} AS Paciente,
+          p.Fecha_Nacimiento_Paciente AS FechaNacimiento, p.Id_Genero AS Sexo, p.Domicilio_Declarado, p.Domicilio_Reniec,
+          est.Nombre_Establecimiento AS Establecimiento,
+          m.UltimaAtencion, m.Atenciones,
+          COUNT(*) OVER () AS Total
+        FROM mios m
+        INNER JOIN MaestroPaciente p ON p.Id_Paciente = m.Id_Paciente
+        OUTER APPLY (SELECT TOP (1) e.Nombre_Establecimiento FROM MAESTRO_HIS_ESTABLECIMIENTO e WHERE e.Id_Establecimiento = p.Id_Establecimiento) est
+        ORDER BY m.UltimaAtencion DESC, Paciente
+        OFFSET @offset ROWS FETCH NEXT @tam ROWS ONLY
+      `));
+    const filas = result.recordset;
+    res.status(200).json({ total: Number(filas[0]?.Total || 0), pagina, tam, filas: filas.map(({ Total, ...f }) => f) });
+  } catch (error) {
+    responderError(res, error, 'tus pacientes');
   }
 };
 
@@ -220,6 +263,11 @@ const buscarAtenciones = async (req, res) => {
       const request = pool.request();
       const condiciones = [];
       let tope = MAX_ATENCIONES;
+      // Un médico restringido solo ve las atenciones que él registró.
+      if (alcance.esLimitado(req)) {
+        request.input('miPersonal', sql.NVarChar(50), alcance.miPersonal(req));
+        condiciones.push('n.Id_Personal = @miPersonal');
+      }
       if (personal) {
         request.input('personal', sql.NVarChar(50), personal);
         condiciones.push('n.Id_Personal = @personal');
@@ -250,6 +298,202 @@ const buscarAtenciones = async (req, res) => {
       `);
     });
     res.status(200).json(result.recordset);
+  } catch (error) {
+    responderError(res, error, 'atenciones');
+  }
+};
+
+// ── ATENCIONES PAGINADAS POR CITA ──
+// GET /api/busqueda/atenciones/citas?personal=&texto=&desde=&hasta=&pagina=1&tam=20&resumen=1&periodos=1
+// Pagina por citas completas (nunca corta una cita a la mitad) y devuelve los totales reales calculados en el servidor:
+//   totalCitas · filas (todas las anotaciones de las citas de la página) · resumen (si resumen=1) · periodos (si periodos=1).
+// «texto» busca en la cita, el código y su descripción, el servicio, el DNI, el nombre y el ID del paciente.
+// Un médico restringido solo ve sus propias atenciones.
+const TAM_CITAS = 20;
+const MAX_TAM_CITAS = 100;
+const citasPaginadas = async (req, res) => {
+  const texto = leerTexto({ query: { q: req.query.texto } }, res, { obligatorio: false });
+  if (texto === null) return;
+  const desde = typeof req.query.desde === 'string' ? req.query.desde : '';
+  const hasta = typeof req.query.hasta === 'string' ? req.query.hasta : '';
+  const personal = typeof req.query.personal === 'string' ? req.query.personal.trim().slice(0, 50) : '';
+  if ((desde && !esFecha(desde)) || (hasta && !esFecha(hasta))) return res.status(400).json({ message: 'Las fechas deben tener el formato AAAA-MM-DD.' });
+  if (desde && hasta && desde > hasta) return res.status(400).json({ message: 'La fecha «Desde» no puede ser posterior a «Hasta».' });
+  // Filtros del panel («Mis atenciones»): una cita entra si alguna de sus filas cumple.
+  const filtros = [];
+  const paramsFiltros = [];
+  const entero = (v, min, max) => { const n = Number(v); return v !== undefined && v !== '' && Number.isInteger(n) && n >= min && n <= max ? n : null; };
+  const anio = entero(req.query.anio, 1990, 2100);
+  if (anio !== null) { filtros.push('YEAR(n.Fecha_Atencion) = @fAnio'); paramsFiltros.push(['fAnio', sql.Int, anio]); }
+  const meses = [...new Set(String(req.query.meses || '').split(',').map(m => entero(m.trim(), 1, 12)).filter(m => m !== null))];
+  if (meses.length) filtros.push(`MONTH(n.Fecha_Atencion) IN (${meses.join(',')})`);
+  const idPaciente = typeof req.query.idPaciente === 'string' ? req.query.idPaciente.trim().slice(0, 50) : '';
+  if (idPaciente) { filtros.push('n.Id_Paciente = @fPac'); paramsFiltros.push(['fPac', sql.NVarChar(50), idPaciente]); }
+  const ups = typeof req.query.ups === 'string' ? req.query.ups.trim().slice(0, 50) : '';
+  if (ups) { filtros.push('n.Id_Ups = @fUps'); paramsFiltros.push(['fUps', sql.NVarChar(50), ups]); }
+  const codigo = typeof req.query.codigo === 'string' ? req.query.codigo.trim().slice(0, MAX_TEXTO) : '';
+  if (codigo) {
+    filtros.push(`(n.Codigo_Item LIKE @fCodIni OR EXISTS (SELECT 1 FROM MAESTRO_HIS_CIE_CPMS k WHERE k.Codigo_Item = n.Codigo_Item AND k.Descripcion_Item LIKE @fCodTxt))`);
+    paramsFiltros.push(['fCodIni', sql.NVarChar(MAX_TEXTO + 1), `${codigo}%`], ['fCodTxt', sql.NVarChar(MAX_TEXTO + 2), `%${codigo}%`]);
+  }
+  const td = String(req.query.td || '').trim().toUpperCase();
+  if (['D', 'P', 'R'].includes(td)) { filtros.push('UPPER(LTRIM(RTRIM(n.Tipo_Diagnostico))) = @fTd'); paramsFiltros.push(['fTd', sql.NVarChar(2), td]); }
+  const sexo = String(req.query.sexo || '').trim().toUpperCase();
+  if (['F', 'M'].includes(sexo)) { filtros.push('EXISTS (SELECT 1 FROM MaestroPaciente ps WHERE ps.Id_Paciente = n.Id_Paciente AND ps.Id_Genero = @fSexo)'); paramsFiltros.push(['fSexo', sql.NVarChar(2), sexo]); }
+  // Edad en años al momento de la atención (los menores de un año cuentan como 0).
+  const edadMin = entero(req.query.edadMin, 0, 150);
+  const edadMax = entero(req.query.edadMax, 0, 150);
+  const EDAD = "(CASE WHEN UPPER(LTRIM(RTRIM(n.Tipo_Edad))) = 'A' THEN TRY_CAST(n.Edad_Reg AS int) ELSE 0 END)";
+  if (edadMin !== null) { filtros.push(`${EDAD} >= @fEdadMin`); paramsFiltros.push(['fEdadMin', sql.Int, edadMin]); }
+  if (edadMax !== null) { filtros.push(`${EDAD} <= @fEdadMax`); paramsFiltros.push(['fEdadMax', sql.Int, edadMax]); }
+  const conOpciones = req.query.opciones === '1';
+
+  if (!texto && !desde && !hasta && !personal && !filtros.length && !alcance.esLimitado(req)) return res.status(400).json({ message: 'Indica un dato o un rango de fechas.' });
+  const tam = Math.min(MAX_TAM_CITAS, Math.max(1, Number.parseInt(req.query.tam, 10) || TAM_CITAS));
+  const pagina = Math.min(100000, Math.max(1, Number.parseInt(req.query.pagina, 10) || 1));
+  const conResumen = req.query.resumen === '1';
+  const conPeriodos = req.query.periodos === '1';
+
+  try {
+    const pool = await poolPromise;
+    const result = await withTransientRetry(() => {
+      const request = pool.request()
+        .input('offset', sql.Int, (pagina - 1) * tam)
+        .input('tam', sql.Int, tam);
+      paramsFiltros.forEach(([nombre, tipo, valor]) => request.input(nombre, tipo, valor));
+      const filtroPanel = filtros.length ? ` AND ${filtros.join(' AND ')}` : '';
+      // Condición base (quién): se aplica a las citas, a sus filas y a los periodos.
+      const base = ['n.Id_Cita IS NOT NULL'];
+      if (alcance.esLimitado(req)) {
+        request.input('miPersonal', sql.NVarChar(50), alcance.miPersonal(req));
+        base.push('n.Id_Personal = @miPersonal');
+      }
+      if (personal) { request.input('personal', sql.NVarChar(50), personal); base.push('n.Id_Personal = @personal'); }
+      // Fechas (cuándo): no se aplican a los conteos por periodo, que tienen sus propias fechas.
+      const fechas = [];
+      if (desde) { request.input('desde', sql.Date, desde); fechas.push('n.Fecha_Atencion >= @desde'); }
+      if (hasta) { request.input('hasta', sql.Date, hasta); fechas.push('n.Fecha_Atencion < DATEADD(DAY, 1, @hasta)'); }
+      const filtroFilas = [...base, ...fechas].join(' AND ');
+      // Texto: una cita entra si alguna de sus filas coincide; luego se muestran todas sus filas.
+      let unionesTexto = '';
+      let filtroTexto = '';
+      if (texto) {
+        request.input('texto', sql.NVarChar(MAX_TEXTO + 2), `%${texto}%`);
+        unionesTexto = `
+          LEFT JOIN MaestroPaciente pac ON pac.Id_Paciente = n.Id_Paciente
+          OUTER APPLY (SELECT TOP (1) cat.Descripcion_Item FROM MAESTRO_HIS_CIE_CPMS cat WHERE cat.Codigo_Item = n.Codigo_Item) c
+          OUTER APPLY (SELECT TOP (1) u.Descripcion_Ups FROM MAESTRO_HIS_UPS u WHERE u.Id_Ups = n.Id_Ups) ups`;
+        filtroTexto = ` AND (n.Id_Cita LIKE @texto OR n.Codigo_Item LIKE @texto OR c.Descripcion_Item LIKE @texto
+          OR ups.Descripcion_Ups LIKE @texto OR n.Id_Paciente LIKE @texto OR pac.Numero_Documento_Paciente LIKE @texto
+          OR CONCAT(pac.Apellido_Paterno_Paciente, ' ', pac.Apellido_Materno_Paciente, ' ', pac.Nombres_Paciente) LIKE @texto
+          ${alcance.esLimitado(req) || personal ? '' : 'OR n.Id_Personal LIKE @texto'})`;
+      }
+
+      const resumenSql = !conResumen ? '' : `
+        SELECT n.Id_Cita, n.Id_Paciente, n.Id_Personal, n.Id_Ups, n.Id_Financiador, n.Id_Condicion_Servicio, n.Codigo_Item, n.Fecha_Atencion
+        INTO #r FROM NProduccion n INNER JOIN #c ON #c.Id_Cita = n.Id_Cita WHERE ${filtroFilas};
+
+        SELECT COUNT(DISTINCT Id_Paciente) AS pacientes, COUNT(DISTINCT Id_Personal) AS profesionales,
+          COUNT(DISTINCT CASE WHEN UPPER(LTRIM(RTRIM(Id_Condicion_Servicio))) = 'N' THEN Id_Cita END) AS nuevos,
+          MIN(Fecha_Atencion) AS primera, MAX(Fecha_Atencion) AS ultima
+        FROM #r;
+
+        SELECT TOP (12) COALESCE(MAX(u.Descripcion_Ups), 'Atención') AS nombre, COUNT(DISTINCT r.Id_Cita) AS n
+        FROM #r r LEFT JOIN MAESTRO_HIS_UPS u ON u.Id_Ups = r.Id_Ups
+        GROUP BY r.Id_Ups ORDER BY n DESC;
+
+        SELECT TOP (1) MAX(f.Descripcion_Financiador) AS nombre, COUNT(DISTINCT r.Id_Cita) AS n
+        FROM #r r INNER JOIN MAESTRO_HIS_FINANCIADOR f ON f.Id_Financiador = r.Id_Financiador
+        GROUP BY r.Id_Financiador ORDER BY n DESC;
+
+        SELECT TOP (1) MAX(${NOMBRE_PACIENTE}) AS nombre, COUNT(DISTINCT r.Id_Cita) AS n
+        FROM #r r INNER JOIN MaestroPaciente pac ON pac.Id_Paciente = r.Id_Paciente
+        GROUP BY r.Id_Paciente ORDER BY n DESC;
+
+        SELECT TOP (1) MAX(${NOMBRE_PERSONAL}) AS nombre, COUNT(DISTINCT r.Id_Cita) AS n
+        FROM #r r INNER JOIN MaestroPersonal per ON per.Id_Personal = r.Id_Personal
+        GROUP BY r.Id_Personal ORDER BY n DESC;
+
+        -- Más frecuentes: cada código cuenta una vez por cita. Los procedimientos empiezan con un número.
+        ;WITH k AS (
+          SELECT LTRIM(RTRIM(r.Codigo_Item)) AS cod, COUNT(DISTINCT r.Id_Cita) AS n,
+            CASE WHEN LTRIM(r.Codigo_Item) LIKE '[0-9]%' THEN 1 ELSE 0 END AS esProc
+          FROM #r r WHERE NULLIF(LTRIM(RTRIM(r.Codigo_Item)), '') IS NOT NULL
+          GROUP BY LTRIM(RTRIM(r.Codigo_Item)), CASE WHEN LTRIM(r.Codigo_Item) LIKE '[0-9]%' THEN 1 ELSE 0 END
+        ), o AS (SELECT k.*, ROW_NUMBER() OVER (PARTITION BY k.esProc ORDER BY k.n DESC, k.cod) AS orden FROM k)
+        SELECT o.cod, o.n, o.esProc, d.Descripcion_Item AS descr
+        FROM o OUTER APPLY (SELECT TOP (1) cat.Descripcion_Item FROM MAESTRO_HIS_CIE_CPMS cat WHERE cat.Codigo_Item = o.cod) d
+        WHERE o.orden <= 6 ORDER BY o.esProc, o.n DESC;`;
+
+      const periodosSql = !conPeriodos ? '' : `
+        DECLARE @hoy date = CAST(GETDATE() AS date);
+        SELECT
+          SUM(CASE WHEN f >= DATEADD(MONTH, -1, @hoy) THEN 1 ELSE 0 END) AS mes,
+          SUM(CASE WHEN f >= DATEADD(MONTH, -6, @hoy) THEN 1 ELSE 0 END) AS seis,
+          SUM(CASE WHEN f >= DATEADD(MONTH, -12, @hoy) THEN 1 ELSE 0 END) AS anio,
+          COUNT(*) AS todo
+        FROM (SELECT MAX(n.Fecha_Atencion) AS f FROM NProduccion n WHERE ${base.join(' AND ')} GROUP BY n.Id_Cita) x;`;
+
+      // Valores de las listas del panel, solo con lo que hay dentro del alcance (años y servicios con atenciones).
+      const opcionesSql = !conOpciones ? '' : `
+        SELECT DISTINCT YEAR(n.Fecha_Atencion) AS anio FROM NProduccion n WHERE ${base.join(' AND ')} AND n.Fecha_Atencion IS NOT NULL ORDER BY anio DESC;
+        SELECT n.Id_Ups AS id, MAX(u.Descripcion_Ups) AS nombre, COUNT(DISTINCT n.Id_Cita) AS n
+        FROM NProduccion n LEFT JOIN MAESTRO_HIS_UPS u ON u.Id_Ups = n.Id_Ups
+        WHERE ${base.join(' AND ')} AND n.Id_Ups IS NOT NULL
+        GROUP BY n.Id_Ups ORDER BY n DESC;`;
+
+      return request.query(`
+        SELECT n.Id_Cita, MAX(n.Fecha_Atencion) AS f
+        INTO #c
+        FROM NProduccion n ${unionesTexto}
+        WHERE ${filtroFilas}${filtroTexto}${filtroPanel}
+        GROUP BY n.Id_Cita;
+
+        SELECT COUNT_BIG(*) AS totalCitas FROM #c;
+
+        ;WITH pagina AS (SELECT Id_Cita FROM #c ORDER BY f DESC, Id_Cita OFFSET @offset ROWS FETCH NEXT @tam ROWS ONLY)
+        SELECT ${SELECT_ATENCION}
+        WHERE n.Id_Cita IN (SELECT Id_Cita FROM pagina) AND ${filtroFilas}
+        ORDER BY n.Fecha_Atencion DESC, n.Id_Cita;
+        ${resumenSql}
+        ${periodosSql}
+        ${opcionesSql}
+      `);
+    });
+
+    const sets = result.recordsets;
+    const respuesta = { totalCitas: Number(sets[0][0].totalCitas), pagina, tam, filas: sets[1] };
+    let i = 2;
+    if (conResumen) {
+      const [g, servicios, fin, pac, per, frecuentes] = sets.slice(i, i + 6);
+      i += 6;
+      const lista = proc => frecuentes.filter(f => f.esProc === proc).map(f => ({ cod: f.cod, desc: f.descr, n: Number(f.n) }));
+      respuesta.resumen = {
+        pacientes: Number(g[0]?.pacientes || 0),
+        profesionales: Number(g[0]?.profesionales || 0),
+        nuevos: Number(g[0]?.nuevos || 0),
+        primera: g[0]?.primera || null,
+        ultima: g[0]?.ultima || null,
+        servicios: servicios.map(s => ({ nombre: s.nombre, n: Number(s.n) })),
+        financiador: fin[0] ? { nombre: fin[0].nombre, n: Number(fin[0].n) } : null,
+        pacienteFrecuente: pac[0] ? { nombre: pac[0].nombre, n: Number(pac[0].n) } : null,
+        profesionalFrecuente: per[0] ? { nombre: per[0].nombre, n: Number(per[0].n) } : null,
+        diagnosticos: lista(0),
+        procedimientos: lista(1)
+      };
+    }
+    if (conPeriodos) {
+      const p = sets[i][0] || {};
+      respuesta.periodos = { mes: Number(p.mes || 0), seis: Number(p.seis || 0), anio: Number(p.anio || 0), todo: Number(p.todo || 0) };
+      i += 1;
+    }
+    if (conOpciones) {
+      respuesta.opciones = {
+        anios: sets[i].map(r => Number(r.anio)),
+        servicios: sets[i + 1].map(s => ({ id: String(s.id), nombre: s.nombre || String(s.id), n: Number(s.n) }))
+      };
+    }
+    res.status(200).json(respuesta);
   } catch (error) {
     responderError(res, error, 'atenciones');
   }
@@ -325,7 +569,12 @@ const buscarPersonal = async (req, res) => {
         documento: 'p.Numero_Documento_Personal LIKE @q',
         nombre: porNombre
       };
-      const where = porModo[modo] || `(p.Id_Personal LIKE @q OR p.Numero_Documento_Personal LIKE @q OR ${porNombre})`;
+      let where = porModo[modo] || `(p.Id_Personal LIKE @q OR p.Numero_Documento_Personal LIKE @q OR ${porNombre})`;
+      // Un médico restringido solo encuentra su propia ficha.
+      if (alcance.esLimitado(req)) {
+        request.input('miPersonal', sql.NVarChar(50), alcance.miPersonal(req));
+        where = `(${where}) AND p.Id_Personal = @miPersonal`;
+      }
       return request.query(`
         SELECT TOP (${MAX_PERSONAL}) ${SELECT_PERSONAL}
         WHERE ${where}
@@ -575,8 +824,10 @@ const detalleCita = async (req, res) => {
 module.exports = {
   buscarPacientes,
   sugerenciasPacientes,
+  misPacientes,
   atencionesPaciente,
   buscarAtenciones,
+  citasPaginadas,
   buscarDefunciones,
   buscarPersonal,
   sugerenciasPersonal,

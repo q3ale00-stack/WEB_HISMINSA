@@ -14,25 +14,16 @@
   </div>
   <div id="defPanelSimple" class="pac-panel" role="tabpanel">
   <div class="def-hero">
-    <div class="def-hero-text">
-      <h3>¿A quién buscas?</h3>
-      <p>Encuentra a una persona fallecida en Ayacucho y consulta su certificado de defunción.</p>
-      <ul class="def-ayuda" aria-label="Qué puedes escribir">
-        <li><b>DNI</b> <span>8 números, ej. 28586440</span></li>
-        <li><b>Nombre</b> <span>nombre y apellido en cualquier orden, ej. andres bermudo</span></li>
-        <li><b>N.º de certificado</b> <span>ej. 2000389562</span></li>
-      </ul>
-    </div>
     <form class="def-search" id="formDefunciones" role="search" autocomplete="off">
       <div class="def-search-box">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="qDefunciones" type="search" placeholder="Escribe un DNI, un nombre o un n.º de certificado" aria-label="DNI, nombre o número de certificado de la persona fallecida">
+        <input id="qDefunciones" type="search" placeholder="DNI, nombre y apellido o n.º de certificado" aria-label="DNI, nombre y apellido o número de certificado de la persona fallecida">
         <button class="btn btn-primary" type="submit">Buscar</button>
         <button class="btn btn-secondary" type="reset" title="Borrar lo escrito, las fechas y el resultado">Limpiar</button>
       </div>
       <div class="def-search-extra">
         <div class="def-periodos" role="group" aria-label="Periodos rápidos">
-          <span>¿No buscas a alguien en concreto? Mira las defunciones de:</span>
+          <span>Ver defunciones recientes:</span>
           <button type="button" class="def-periodo" data-def-periodo="7">Últimos 7 días</button>
           <button type="button" class="def-periodo" data-def-periodo="30">Último mes</button>
           <button type="button" class="def-periodo" data-def-periodo="90">Últimos 3 meses</button>
@@ -42,21 +33,11 @@
           <div class="def-rango-campos">
             <label class="label" for="desdeDefunciones">Desde<input class="input" id="desdeDefunciones" type="date"></label>
             <label class="label" for="hastaDefunciones">Hasta<input class="input" id="hastaDefunciones" type="date"></label>
-            <button class="btn btn-secondary btn-sm" type="reset">Limpiar</button>
           </div>
         </details>
       </div>
     </form>
   </div>
-  <div id="resDefunciones" aria-live="polite">
-    <div class="def-inicio">
-      <h3>Cómo buscar</h3>
-      <ol>
-        <li><span>1</span><div><strong>Escribe lo que sepas de la persona</strong><small>Basta con el DNI o con un nombre y un apellido. No importan mayúsculas ni tildes.</small></div></li>
-        <li><span>2</span><div><strong>Pulsa «Buscar» o la tecla Enter</strong><small>Verás a las personas que coinciden, de la más reciente a la más antigua.</small></div></li>
-        <li><span>3</span><div><strong>Abre su certificado</strong><small>Con «Ver certificado» verás la fecha, el lugar y las causas de la muerte.</small></div></li>
-      </ol>
-    </div>
-  </div>
+  <div id="resDefunciones" aria-live="polite"></div>
   </div>
 </section>

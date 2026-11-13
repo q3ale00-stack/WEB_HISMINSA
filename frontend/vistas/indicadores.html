@@ -65,7 +65,7 @@
         <!-- Desplegable oficial del catálogo -->
         <div class="ind-select-wrapper">
           <select id="indSelectorIndicador" class="ind-select-main" onchange="seleccionarIndicador(this.value)">
-            <option value="" selected>— Seleccione un indicador (01 a 24) —</option>
+            <option value="" selected>— Seleccione un indicador —</option>
           </select>
           <svg class="ind-select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
         </div>
@@ -232,11 +232,11 @@
 
         <div class="ind-kpi-card ind-kpi-highlight-green">
           <div class="ind-kpi-head">
-            <span class="ind-kpi-title">Sí Cumplen Requisito</span>
-            <span class="ind-kpi-tag green">Tratados ≤ 37d</span>
+            <span class="ind-kpi-title">Tratamiento Oportuno</span>
+            <span class="ind-kpi-tag green">≤ 37 días</span>
           </div>
           <div class="ind-kpi-value" id="kpiNumerador" style="color:#059669;">0</div>
-          <div class="ind-kpi-sub">Total en gráficos acumulados</div>
+          <div class="ind-kpi-sub">Iniciaron tratamiento oncológico a tiempo</div>
         </div>
 
         <div class="ind-kpi-card">
@@ -259,11 +259,11 @@
 
         <div class="ind-kpi-card">
           <div class="ind-kpi-head">
-            <span class="ind-kpi-title">No Cumplen Requisito</span>
-            <span class="ind-kpi-tag red">Fuera de plazo</span>
+            <span class="ind-kpi-title">Pendiente / Fuera de Plazo</span>
+            <span class="ind-kpi-tag red">Sin inicio oportuno</span>
           </div>
           <div class="ind-kpi-value" id="kpiNoCumplen" style="color:#dc2626;">0</div>
-          <div class="ind-kpi-sub">Excedieron 37 días / sin tratamiento</div>
+          <div class="ind-kpi-sub">Superaron 37 días o pendientes de inicio</div>
         </div>
 
         <div class="ind-kpi-card">
@@ -287,18 +287,18 @@
             <div class="ind-chart-box-header">
               <div class="ind-chart-header-left">
                 <span class="ind-chart-tag">Diagrama 1</span>
-                <h4 class="ind-chart-title">TOTAL ACUMULADO PROGRESIVO POR MES (Diagrama de Barras)</h4>
+                <h4 class="ind-chart-title">TOTAL ACUMULADO PROGRESIVO POR MES (Diagrama de Barras Dobles)</h4>
               </div>
               <div class="ind-chart-header-right">
                 <div class="ind-legend-row">
-                  <span class="ind-legend-chip green">● Sí Cumplen (Tratados ≤ 37 d)</span>
-                  <span class="ind-legend-chip amber">● No Continuaron / Pendientes</span>
+                  <span class="ind-legend-chip green">● Tratamiento Oportuno (≤ 37 d)</span>
+                  <span class="ind-legend-chip amber">● Pendientes / Fuera de Plazo</span>
                 </div>
                 <!-- Botón para mostrar los 2 o solo uno de los datos -->
                 <div class="ind-toggle-group" title="Filtro de serie a mostrar en el diagrama de barras">
-                  <button type="button" class="ind-toggle-btn active" id="btnBarrasAmbos" onclick="cambiarSerieBarras('ambos')">Ver Ambos</button>
-                  <button type="button" class="ind-toggle-btn" id="btnBarrasCumplen" onclick="cambiarSerieBarras('cumplen')">Solo Sí Cumplen</button>
-                  <button type="button" class="ind-toggle-btn" id="btnBarrasNoCumplen" onclick="cambiarSerieBarras('nocumplen')">Solo No Continuaron</button>
+                  <button type="button" class="ind-toggle-btn active" id="btnBarrasAmbos" onclick="cambiarSerieBarras('ambos')">Ver Ambos (2 Barras)</button>
+                  <button type="button" class="ind-toggle-btn" id="btnBarrasCumplen" onclick="cambiarSerieBarras('cumplen')">Solo Tratamiento Oportuno</button>
+                  <button type="button" class="ind-toggle-btn" id="btnBarrasNoCumplen" onclick="cambiarSerieBarras('nocumplen')">Solo Pendientes / Fuera de Plazo</button>
                 </div>
                 <!-- Alternar entre modo Acumulado y Mensual -->
                 <div class="ind-toggle-group" title="Modo de cálculo temporal">
@@ -307,7 +307,7 @@
                 </div>
               </div>
             </div>
-            <p class="ind-chart-desc" id="indBarrasDesc">Muestra el total sumado progresivo mes a mes (Enero: N, Febrero: N + M, etc.) diferenciando con colores a los pacientes que <strong>sí continuaron / cumplen requisito</strong> y los que <strong>no continuaron</strong>. Use los botones superiores para ver ambos o aislar cada serie.</p>
+            <p class="ind-chart-desc" id="indBarrasDesc">Comparativa mensual mediante barras dobles que permite contrastar directamente a los pacientes con <strong>Tratamiento Oportuno (≤ 37 días)</strong> frente a aquellos <strong>Pendientes o Fuera de Plazo</strong>. Use los botones superiores para ver ambas barras o aislar cada serie.</p>
             
             <div class="ind-chart-canvas-container" id="indBarrasAcumuladasCanvas">
               <div class="ind-loading-state">Calculando totales progresivos del indicador...</div>
@@ -326,18 +326,18 @@
               </div>
               <div class="ind-chart-header-right">
                 <div class="ind-legend-row">
-                  <span class="ind-legend-chip blue">● Pacientes con Cáncer / No Continuaron</span>
-                  <span class="ind-legend-chip green">● Sí Cumplen Requisito (≤ 37 d)</span>
+                  <span class="ind-legend-chip blue">● Casos Diagnosticados (Cáncer Prevalente)</span>
+                  <span class="ind-legend-chip green">● Tratamiento Oportuno (≤ 37 d)</span>
                 </div>
                 <!-- Botón para mostrar los 2 o solo uno de los datos en el gráfico de puntos -->
                 <div class="ind-toggle-group" title="Filtro de serie a mostrar en el diagrama de puntos">
                   <button type="button" class="ind-toggle-btn active" id="btnPuntosAmbos" onclick="cambiarSeriePuntos('ambos')">Ver Ambos</button>
-                  <button type="button" class="ind-toggle-btn" id="btnPuntosCumplen" onclick="cambiarSeriePuntos('cumplen')">Solo Sí Cumplen</button>
-                  <button type="button" class="ind-toggle-btn" id="btnPuntosNoCumplen" onclick="cambiarSeriePuntos('nocumplen')">Solo Cáncer / No Continuaron</button>
+                  <button type="button" class="ind-toggle-btn" id="btnPuntosCumplen" onclick="cambiarSeriePuntos('cumplen')">Solo Tratamiento Oportuno</button>
+                  <button type="button" class="ind-toggle-btn" id="btnPuntosNoCumplen" onclick="cambiarSeriePuntos('nocumplen')">Solo Casos Diagnosticados</button>
                 </div>
               </div>
             </div>
-            <p class="ind-chart-desc" id="indPuntosDesc">Diagrama de puntos continuos que traza el ritmo mensual de pacientes diagnosticados con cáncer prevalente y, en otro color, aquellos que inician oportunamente su tratamiento oncológico.</p>
+            <p class="ind-chart-desc" id="indPuntosDesc">Evolución mensual continua que contrasta el ritmo de pacientes diagnosticados con cáncer prevalente frente a aquellos que iniciaron tratamiento oncológico oportuno (≤ 37 días).</p>
             
             <div class="ind-chart-canvas-container" id="indPuntosTendenciaCanvas">
               <div class="ind-loading-state">Trazando puntos mensuales...</div>
@@ -414,9 +414,9 @@
             <div class="ind-nominal-actions">
               <select id="filtroEstadoNominal" class="ind-select-filter-mini" onchange="filtrarPadronNominal()">
                 <option value="" selected>Todos los pacientes (Padrón Oficial)</option>
-                <option value="CUMPLE">Solo los que SÍ cumplen (Numerador ≤ 37 d)</option>
-                <option value="NO_CUMPLE">No continuaron / Pendientes</option>
-                <option value="EXCLUIDO">Excluidos (Paliativo/Defunción)</option>
+                <option value="CUMPLE">Solo Tratamiento Oportuno (≤ 37 d)</option>
+                <option value="NO_CUMPLE">Pendientes / Fuera de Plazo</option>
+                <option value="EXCLUIDO">Excluidos (Paliativo / Defunción)</option>
               </select>
               <input type="text" id="indNominalSearch" class="ind-search-input" placeholder="Buscar por DNI o paciente..." oninput="filtrarPadronNominal()">
               <div class="ind-export-group" role="group" aria-label="Exportar Padrón Nominal">
@@ -445,17 +445,19 @@
                   <th>Género</th>
                   <th>Cáncer</th>
                   <th>F. Diagnóstico</th>
+                  <th title="Fecha límite máxima para inicio oportuno (37 días calendario posteriores al diagnóstico)">F. Límite Oportuna</th>
                   <th>F. Tratamiento</th>
-                  <th>Días</th>
+                  <th title="Días transcurridos entre el diagnóstico y el primer tratamiento">Días Tratam.</th>
+                  <th title="Días restantes de vigencia para cumplir el tratamiento dentro de los 37 días de plazo">Plazo Restante</th>
                   <th>Excluye</th>
                   <th>Den</th>
                   <th>Num</th>
-                  <th>Estado</th>
+                  <th>Estado de Gestión</th>
                 </tr>
               </thead>
               <tbody id="indNominalTableBody">
                 <tr>
-                  <td colspan="15" class="ind-td-empty">Cargando padrón nominal...</td>
+                  <td colspan="17" class="ind-td-empty">Cargando padrón nominal...</td>
                 </tr>
               </tbody>
             </table>

@@ -1,6 +1,7 @@
 // Controlador de Indicadores de Gestión y Desempeño HIS MINSA
 const { poolPromise, sql } = require('../config/db');
 const cache = require('../config/cache');
+const alcance = require('./alcance');
 
 // Obtiene el catálogo de todos los indicadores registrados en MAESTRO_HIS_INDICADOR
 const getMaestroIndicadores = async (req, res) => {
@@ -66,12 +67,18 @@ const getIndicador = async (req, res) => {
     const codRenaes = req.query.codRenaes ? String(req.query.codRenaes).trim() : '35125'; // Hospital Regional de Ayacucho por defecto
     const tipoCancerFiltro = req.query.tipoCancer ? String(req.query.tipoCancer).trim() : null;
 
-    const cacheKey = `ind14_v4_${anio}_${fechaInicio}_${fechaFin}_${codRenaes}_${tipoCancerFiltro || 'ALL'}`;
+    // Un médico restringido ve las cifras del hospital, pero el padrón nominal solo con sus pacientes.
+    const cacheKey = alcance.claveCache(req, `ind14_v4_${anio}_${fechaInicio}_${fechaFin}_${codRenaes}_${tipoCancerFiltro || 'ALL'}`);
     const cached = cache.get(cacheKey);
     if (cached) return res.status(200).json(cached);
 
     const pool = await poolPromise;
     const request = pool.request();
+    const filtroNominal = alcance.esLimitado(req)
+      ? `WHERE EXISTS (SELECT 1 FROM NProduccion mio INNER JOIN MaestroPaciente mp ON mp.Id_Paciente = mio.Id_Paciente
+           WHERE mp.Numero_Documento_Paciente = i.num_doc AND mio.Id_Personal = @miPersonal)`
+      : '';
+    if (filtroNominal) request.input('miPersonal', sql.NVarChar(50), alcance.miPersonal(req));
     request.input('fechaInicio', sql.Date, fechaInicio);
     request.input('fechaFin', sql.Date, fechaFin);
     request.input('codRenaes', sql.VarChar(50), codRenaes || null);
@@ -114,8 +121,7 @@ const getIndicador = async (req, res) => {
       INNER JOIN MaestroPaciente p WITH (NOLOCK) ON p.Id_Paciente = np.Id_Paciente
       INNER JOIN MAESTRO_HIS_ESTABLECIMIENTO e WITH (NOLOCK) ON e.Id_Establecimiento = np.Id_Establecimiento
       INNER JOIN #Renaes_Anexo01 r ON TRY_CONVERT(INT, e.Codigo_Unico) = TRY_CONVERT(INT, r.cod_estab)
-      -- Se extrae hasta 37 días después del fin: un diagnóstico del final del periodo puede tratarse después.
-      WHERE np.Fecha_Atencion >= @fechaInicio AND np.Fecha_Atencion < DATEADD(DAY, 38, @fechaFin)
+      WHERE np.Fecha_Atencion >= @fechaInicio AND np.Fecha_Atencion <= @fechaFin
         AND np.Codigo_Item IN (
           -- CÓDIGOS DE CÁNCERES PREVALENTES Y PROCEDIMIENTOS DIAGNÓSTICOS (DENOMINADOR)
           'C530','C531','C532','C533','C534','C535','C536','C537','C538','C539','57500','58100',
@@ -207,8 +213,7 @@ const getIndicador = async (req, res) => {
           WHERE
               h.Fecha_Atencion BETWEEN d.fecha_diagnostico AND DATEADD(DAY, 37, d.fecha_diagnostico) AND
               h.id_tipitem = 'R' AND
-              h.valor_lab IS NULL AND
-              h.cod_item LIKE 'C%'
+              h.valor_lab IS NULL
       ), Cte_Numerador AS(
           SELECT c.renaes [renaes_numerador], c.id_cita_tratamiento, c.id_tipo_doc, c.num_doc,
           c.Fecha_Tratamiento, c.Tipo, ROW_NUMBER() OVER(PARTITION BY c.id_tipo_doc, c.num_doc, c.Tipo ORDER BY c.Fecha_Tratamiento) [id]
@@ -251,12 +256,8 @@ const getIndicador = async (req, res) => {
       INTO #Indicador FROM #Denonimador d
       LEFT JOIN #Numerador n ON d.id_tipo_doc = n.id_tipo_doc AND d.num_doc = n.num_doc AND d.Tipo = n.Tipo
       LEFT JOIN #CuidadoPaliativo p ON d.id_tipo_doc = p.id_tipo_doc AND d.num_doc = p.num_doc
-      -- TOP 1: si una persona tiene más de un registro en SINADEF no se duplica en el denominador.
-      OUTER APPLY (
-          SELECT TOP 1 x.FECHA FROM [dbo].[V_SINADEF_AYACUCHO_DOMFALLECIDO] x WITH (NOLOCK)
-          WHERE x.DOCUMENTO = d.num_doc AND x.FECHA <= DATEADD(DAY, 37, d.fecha_diagnostico)
-          ORDER BY x.FECHA
-      ) def;
+      LEFT JOIN [dbo].[V_SINADEF_AYACUCHO_DOMFALLECIDO] def WITH (NOLOCK) 
+          ON d.num_doc = def.DOCUMENTO AND def.FECHA <= DATEADD(DAY, 37, d.fecha_diagnostico);
 
       -- RESULTADO 1: RESUMEN GLOBAL
       SELECT 
@@ -311,6 +312,7 @@ const getIndicador = async (req, res) => {
           i.Paciente,
           i.Tipo AS Tipo_Cancer,
           CONVERT(VARCHAR(10), i.fecha_diagnostico, 120) AS Fecha_Diagnostico,
+          CONVERT(VARCHAR(10), DATEADD(DAY, 37, i.fecha_diagnostico), 120) AS Fecha_Limite,
           i.renaes_numerador,
           i.id_cita_tratamiento,
           CONVERT(VARCHAR(10), i.Fecha_Tratamiento, 120) AS Fecha_Tratamiento,
@@ -333,6 +335,7 @@ const getIndicador = async (req, res) => {
               ELSE 'NO CONTINUÓ / PENDIENTE'
           END AS Estado_Gestion
       FROM #Indicador i
+      ${filtroNominal}
       ORDER BY i.fecha_diagnostico DESC;
     `;
 

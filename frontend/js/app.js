@@ -30,6 +30,16 @@ function showAlert(msg, type = 'info') {
 }
 
 // Centraliza las llamadas JSON, convierte respuestas HTTP fallidas en errores legibles y reintenta ante 503 transitorios
+// Sección o dato no autorizado para la cuenta (respuesta 403 o vista prohibida): siempre el mismo aviso.
+// Si llegan varias negativas a la vez (por ejemplo, al abrir una ficha), el aviso se muestra una sola vez.
+const ACCESO_DENEGADO = 'Acceso denegado, comunícate con el administrador.';
+let ultimoAvisoAcceso = 0;
+function avisarAccesoDenegado() {
+  if (Date.now() - ultimoAvisoAcceso < 3000) return;
+  ultimoAvisoAcceso = Date.now();
+  toast(ACCESO_DENEGADO, 'error');
+}
+
 async function apiFetch(path, opts = {}, retries = 2) {
   const url = apiUrl.replace(/\/$/, '') + path;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -46,8 +56,9 @@ async function apiFetch(path, opts = {}, retries = 2) {
           continue;
         }
         const data = await res.json().catch(() => ({}));
-        const error = new Error(data.message || data.error || `HTTP ${res.status}`);
+        const error = new Error(res.status === 403 ? ACCESO_DENEGADO : (data.message || data.error || `HTTP ${res.status}`));
         error.status = res.status;
+        if (res.status === 403) avisarAccesoDenegado();
         if (res.status === 401 && currentUser && path !== '/auth/logout') {
           returnToLogin();
           const loginStatus = document.getElementById('loginStatus');
@@ -95,13 +106,69 @@ function partesUrl() {
 function vistaDesdeUrl() {
   const view = partesUrl()[0];
   if (!view || !document.getElementById('view-' + view)) return 'inicio';
-  if (view === 'importar' && currentUser?.role !== 'admin') return 'inicio';
-  return view;
+  if (vistaPermitida(view)) return view;
+  avisarAccesoDenegado();
+  return 'inicio';
+}
+
+// ── Modo «mis pacientes» ──
+// Un médico con acceso «solo sus pacientes» ve Pacientes, Atenciones y Personal como «Mis pacientes»,
+// «Mis atenciones» y «Mis datos». El servidor ya filtra los datos; aquí cambian los nombres y los atajos.
+const esModoMedico = () => currentUser?.role === 'doctor' && currentUser?.access === 'restringido';
+const TEXTOS_MODO_MEDICO = {
+  pacientes: { menu: 'Mis pacientes', pestana: 'Buscar mis pacientes', sub: 'Los pacientes que has atendido, con su historia completa' },
+  atenciones: { menu: 'Mis atenciones', pestana: 'Mis atenciones', sub: 'Las atenciones que registraste en el HIS' },
+  personal: { menu: 'Mi producción', pestana: 'Mi producción', sub: 'Tu ficha, tu reporte mensual y todas tus atenciones' }
+};
+const TEXTOS_ORIGINALES = {};
+
+function aplicarModoMedico() {
+  const activo = esModoMedico();
+  Object.entries(TEXTOS_MODO_MEDICO).forEach(([vista, textos]) => {
+    const boton = document.querySelector(`.nav-btn[data-view="${vista}"]`);
+    const pestana = document.querySelector(`[data-${{ pacientes: 'pac', atenciones: 'ate', personal: 'per' }[vista]}-tab="simple"]`);
+    // El texto es el último nodo de texto del botón (después del icono).
+    const nodo = el => el && [...el.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()).pop();
+    const original = TEXTOS_ORIGINALES[vista] ||= { menu: nodo(boton)?.textContent, pestana: nodo(pestana)?.textContent, ...viewMeta[vista] };
+    if (nodo(boton)) nodo(boton).textContent = activo ? ` ${textos.menu} ` : original.menu;
+    if (nodo(pestana)) nodo(pestana).textContent = activo ? ` ${textos.pestana} ` : original.pestana;
+    viewMeta[vista] = activo ? { title: textos.menu, sub: textos.sub } : { title: original.title, sub: original.sub };
+  });
+  document.getElementById('view-personal')?.classList.toggle('modo-mis-datos', activo);
+  // Diseño simple para el médico (css/app.css, «Modo médico»): menú corto y ordenado, sin términos técnicos.
+  document.body.classList.toggle('modo-medico', activo);
+  ['pacTabAvanzada', 'ateTabAvanzada', 'perTabAvanzada'].forEach(id => {
+    const tab = document.getElementById(id);
+    const nodo = tab && [...tab.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()).pop();
+    if (!nodo) return;
+    TEXTOS_ORIGINALES[id] ||= nodo.textContent;
+    nodo.textContent = activo ? ' Buscar con filtros ' : TEXTOS_ORIGINALES[id];
+  });
+  // «Mis atenciones»: el panel de filtros reemplaza al buscador simple.
+  document.getElementById('view-atenciones')?.classList.toggle('modo-mis-atenciones', activo);
+  // Buscador simple o panel de filtros según la pestaña (ver mateAplicarModo).
+  mateAplicarModo();
+  const qAtenciones = document.getElementById('qAtenciones');
+  if (qAtenciones) qAtenciones.placeholder = activo ? 'Paciente, DNI, cita, código o diagnóstico' : 'Cita, paciente, DNI, ID de personal, código o diagnóstico';
+  const pista = document.querySelector('#view-atenciones .search-hint');
+  if (pista) pista.textContent = activo
+    ? 'Al abrir se muestran todas tus atenciones, de la más reciente a la más antigua, de 20 en 20. Escribe un dato o elige fechas para acotarlas.'
+    : 'Escribe un dato (cita, paciente, DNI, código o diagnóstico), elige un rango de fechas o ambos. Se cargan de 20 en 20, de la más reciente a la más antigua.';
+}
+
+// Importar y Configuración: solo administradores. Consultas y Defunciones: administradores y médicos con
+// acceso completo. Un médico «solo sus pacientes» ve el resto, filtrado por el servidor a sus propios datos.
+// El servidor aplica las mismas reglas; aquí solo se evita mostrar lo que no se podría usar.
+function vistaPermitida(view) {
+  if (['importar', 'config'].includes(view)) return currentUser?.role === 'admin';
+  if (['consultas', 'defunciones', 'catalogos'].includes(view)) return currentUser?.access === 'completo';
+  return true;
 }
 
 // Activa la vista y navegación elegidas, actualiza su encabezado y carga sus datos iniciales.
 // La vista queda en la URL para que recargar la página o el botón Atrás vuelvan a ella.
 function showView(view, { desdeUrl = false } = {}) {
+  if (!vistaPermitida(view)) { avisarAccesoDenegado(); view = 'inicio'; }
   if (!desdeUrl && partesUrl()[0] !== view) history.pushState(null, '', '#' + view);
   // La vista nueva entra desde el lado hacia el que se avanza en el menú (ver «Cambio de vista» en css/vidrio.css).
   const ordenMenu = [...document.querySelectorAll('.appnav .nav-btn')].map(b => b.dataset.view);
@@ -204,6 +271,10 @@ const enterApplication = async user => {
   cargarControlInactividad();
   // La importación de datos solo está disponible para administradores.
   document.getElementById('navImportar').hidden = user.role !== 'admin';
+  document.querySelectorAll('.nav-btn[data-view="config"], .nav-btn[data-view="consultas"], .nav-btn[data-view="defunciones"], .nav-btn[data-view="catalogos"]').forEach(b => { b.hidden = !vistaPermitida(b.dataset.view); });
+  // «Filtrar por este código» lleva a Consultas.
+  document.getElementById('btnFiltrarPorEsteCodigo').hidden = !vistaPermitida('consultas');
+  aplicarModoMedico();
   document.querySelector('.login-page').hidden = true;
   document.querySelector('.app').hidden = false;
   await initializeMainApp();
@@ -238,7 +309,7 @@ const profileFields = [
 
 function renderUserProfile() {
   if (!currentUser) return;
-  const roleName = currentUser.role === 'admin' ? 'Administrador' : 'Médico';
+  const roleName = currentUser.role === 'admin' ? 'Administrador' : `Médico · ${currentUser.access === 'restringido' ? 'solo sus pacientes y atenciones' : 'acceso completo'}`;
   document.getElementById('profileDetails').innerHTML = profileFields.map(([label, key]) => {
     let value = key === 'role' ? roleName : currentUser[key];
     if (key === 'createdAt' && value) value = new Date(value).toLocaleString('es-PE');
@@ -266,6 +337,9 @@ function updateNewUserRoleFields() {
   document.getElementById('personSearchField').hidden = !isDoctor;
   document.getElementById('newUserSpecialty').required = isDoctor;
   document.getElementById('specialtyRequired').hidden = !isDoctor;
+  // Los administradores siempre tienen acceso completo: el nivel solo se elige para médicos.
+  document.getElementById('newUserAccessField').hidden = !isDoctor;
+  document.getElementById('newUserAccess').disabled = !isDoctor;
   ['newUserFullName', 'newUserDni', 'newUserProfession', 'newUserCmp', 'newUserEstablishment'].forEach(id => {
     const field = document.getElementById(id);
     field.readOnly = isDoctor || ['newUserProfession', 'newUserCmp', 'newUserEstablishment'].includes(id);
@@ -1147,6 +1221,7 @@ function verDashboardPaciente(paciente) {
 function abrirActividadPersonal(personal) {
   const id = personal?.id ?? personal?.Id_Personal;
   if (id !== undefined && id !== null && String(id).trim() !== '') { abrirFichaPersonal(id); return; }
+  if (esModoMedico()) { avisarAccesoDenegado(); return; }
   const dato = personal?.documento || personal?.nombre || personal?.descripcion || '';
   showView('personal');
   if (dato) buscarPersonalSimple(String(dato));
@@ -3390,6 +3465,8 @@ function aniosDesde(valor) {
 // Con «reporte», genera el reporte mensual del último mes del periodo elegido en Producción.
 async function abrirFichaPersonal(id, { reporte = false } = {}) {
   if (id === null || id === undefined || String(id).trim() === '') return;
+  // Un médico «solo sus pacientes» solo puede abrir su propia ficha.
+  if (esModoMedico() && String(id).trim() !== String(currentUser.personalId || '')) { avisarAccesoDenegado(); return; }
   if (reporte) {
     const f = reporteData?.filtros || {};
     if (f.anio && f.mes) {
@@ -3704,33 +3781,333 @@ async function cargarAtencionesFicha(button, path, target, contexto, titulo = 'A
   }
 }
 
-async function buscarAtenciones() {
-  const q = gv('qAtenciones');
-  const desde = gv('desdeAtenciones');
-  const hasta = gv('hastaAtenciones');
-  if (!q && !desde && !hasta) { toast('Escribe un dato o elige un rango de fechas.', 'info'); document.getElementById('qAtenciones').focus(); return; }
-  if (desde && hasta && desde > hasta) { toast('La fecha «Desde» no puede ser posterior a «Hasta».', 'error'); return; }
-  const params = new URLSearchParams({ modo: 'todos', q });
-  if (desde) params.set('desde', desde);
-  if (hasta) params.set('hasta', hasta);
-  const seq = ++searchSeq.atenciones;
-  estadoBusqueda('resAtenciones', 'Buscando atenciones…');
-  try {
-    const rows = await apiFetch(`/busqueda/atenciones?${params}`);
-    if (seq !== searchSeq.atenciones) return;
-    const el = document.getElementById('resAtenciones');
-    if (!rows.length) { estadoBusqueda('resAtenciones', 'No se encontraron atenciones con esos datos.'); return; }
-    el.innerHTML = `<p class="result-summary">${formatNumber(rows.length)} registro(s)${rows.length >= 200 ? ' · se muestran los 200 más recientes; acota con fechas o un dato más específico' : ''}</p><div id="resAtencionesHist"></div>`;
-    histMontar('resAtencionesHist', rows, {
-      contexto: 'busqueda',
-      exportar: {
-        clave: 'atenciones', titulo: 'Reporte de atenciones', archivo: 'atenciones',
-        datos: [['Búsqueda', q], ['Desde', desde ? formatIsoDate(desde) : null], ['Hasta', hasta ? formatIsoDate(hasta) : null], rows.length >= 200 ? ['Nota', 'Se incluyen las 200 atenciones más recientes'] : null].filter(Boolean)
-      }
-    });
-  } catch (error) {
-    if (seq === searchSeq.atenciones) estadoBusqueda('resAtenciones', error.message || 'No se pudo buscar.', 'error');
+// Búsqueda de atenciones paginada por cita en el servidor: el total y el resumen son los reales y «Ver más»
+// carga las siguientes 20 citas. «Mis atenciones» (médico con acceso solo a sus pacientes) puede buscar sin filtros.
+const ATE_PASO = 20;
+const ATE = { q: '', desde: '', hasta: '', filas: [], total: 0, resumen: null, pagina: 0, seq: 0 };
+
+// ── «Mis atenciones»: panel de filtros al estilo de la búsqueda avanzada, encima de la lista paginada ──
+// modo: «simple» (pestaña Mis atenciones: solo buscador de paciente) o «filtros» (pestaña Buscar con filtros: el panel).
+const MATE = { iniciado: false, opciones: null, meses: new Set(), paciente: null, sugSeq: 0, sugerencias: [], modo: 'simple' };
+const MATE_CAMPOS = ['texto', 'anio', 'ups', 'codigo', 'td', 'sexo', 'edadMin', 'edadMax'];
+
+function mateValores() {
+  // Pestaña «Mis atenciones»: solo el paciente (elegido o escrito).
+  if (MATE.modo !== 'filtros') {
+    const texto = (document.querySelector('#mateSimple [data-mate-simple]')?.value || '').trim();
+    return MATE.paciente ? { idPaciente: MATE.paciente.Id_Paciente } : { texto };
   }
+  const panel = document.getElementById('mateFiltros');
+  const v = Object.fromEntries(MATE_CAMPOS.map(c => [c, (panel?.querySelector(`[data-mate="${c}"]`)?.value || '').trim()]));
+  v.meses = [...MATE.meses].sort((a, b) => a - b).join(',');
+  // Paciente elegido de las sugerencias: se filtra por su ID en vez de por el texto.
+  if (MATE.paciente) { v.idPaciente = MATE.paciente.Id_Paciente; v.texto = ''; }
+  return v;
+}
+
+// Sugerencias de pacientes (solo los suyos) debajo de «Paciente, DNI o cita».
+async function mateSugerir(input) {
+  const lista = input.parentElement.querySelector('.nom-sug-list');
+  const texto = input.value.trim();
+  const seq = ++MATE.sugSeq;
+  if (texto.length < 2) { lista.hidden = true; return; }
+  try {
+    const filas = await apiFetch(`/busqueda/pacientes/sugerencias?q=${encodeURIComponent(texto)}&limite=8`);
+    if (seq !== MATE.sugSeq || input.value.trim() !== texto) return;
+    MATE.sugerencias = filas;
+    lista.innerHTML = filas.length
+      ? filas.map((p, i) => `<li role="option" data-mate-sug="${i}"><strong>${esc(p.Paciente || 'Sin nombre')}</strong><span>${esc([p.Documento ? `DNI ${p.Documento}` : '', psEdad(p.FechaNacimiento), p.Historia_Clinica ? `H.C. ${p.Historia_Clinica}` : ''].filter(Boolean).join(' · '))}</span></li>`).join('')
+      : '<li class="vacio">Ninguno de tus pacientes coincide; se buscará como texto (cita o código).</li>';
+    lista.hidden = false;
+  } catch (_) { lista.hidden = true; }
+}
+
+// Pone como filtro el paciente abierto en «Mis pacientes» (si es otro distinto del actual). Devuelve true si cambió.
+// Igual que en la búsqueda avanzada de Pacientes: al abrir «Mis atenciones» no hay que volver a escribirlo.
+function pasarPacienteAMisAtenciones() {
+  const p = typeof PS !== 'undefined' ? PS.paciente : null;
+  const id = String(p?.Id_Paciente ?? '').trim();
+  // Se pasa una sola vez por paciente abierto: si luego se quita el filtro, no vuelve a ponerse solo.
+  if (!id || MATE.pasado === id || String(MATE.paciente?.Id_Paciente ?? '') === id) return false;
+  if (!document.getElementById('mateSimple')) return false;
+  MATE.pasado = id;
+  MATE.paciente = p;
+  mateSincronizarPaciente();
+  return true;
+}
+
+// Muestra el paciente elegido en los dos buscadores (pestaña simple y panel de filtros).
+function mateSincronizarPaciente() {
+  const p = MATE.paciente;
+  const texto = p ? ([p.Paciente, p.Documento ? `DNI ${p.Documento}` : ''].filter(Boolean).join(' · ') || String(p.Id_Paciente)) : '';
+  document.querySelectorAll('#mateSimple [data-mate-simple], #mateFiltros [data-mate="texto"]').forEach(input => { input.value = texto; });
+}
+
+function mateElegirPaciente(input, p) {
+  MATE.paciente = p;
+  mateSincronizarPaciente();
+  input.parentElement.querySelector('.nom-sug-list').hidden = true;
+  buscarAtenciones();
+}
+
+// Pestaña «Mis atenciones» del médico: solo un buscador de paciente sobre la lista.
+function mateSimpleHtml() {
+  return `<div id="mateSimple" class="card search-card mate-simple" hidden>
+      <form class="mate-simple-form" role="search" autocomplete="off">
+        <label class="mate-simple-campo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input class="input" data-mate-simple type="search" placeholder="Buscar por paciente: nombre o DNI" aria-label="Buscar por paciente" role="combobox" aria-autocomplete="list">
+          <ul class="nom-sug-list" role="listbox" hidden></ul>
+        </label>
+        <button type="submit" class="btn btn-primary">Buscar</button>
+        <button type="button" class="btn btn-secondary" data-mate-simple-limpiar>Limpiar</button>
+      </form>
+      <p class="search-hint">Aquí están todas tus atenciones, de la más reciente a la más antigua. Para buscar por fecha, diagnóstico, servicio o edad, usa «Buscar con filtros».</p>
+    </div>`;
+}
+
+function mateActivarSimple(caja) {
+  const input = caja.querySelector('[data-mate-simple]');
+  const lista = caja.querySelector('.nom-sug-list');
+  let timer = null;
+  let sugTimer = null;
+  input.addEventListener('input', () => {
+    MATE.paciente = null;
+    clearTimeout(sugTimer);
+    sugTimer = setTimeout(() => mateSugerir(input), 250);
+    clearTimeout(timer);
+    timer = setTimeout(buscarAtenciones, 600);
+  });
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { lista.hidden = true; return; }
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    clearTimeout(timer);
+    if (!lista.hidden && MATE.sugerencias.length === 1) { mateElegirPaciente(input, MATE.sugerencias[0]); return; }
+    lista.hidden = true;
+    buscarAtenciones();
+  });
+  input.addEventListener('blur', () => setTimeout(() => { lista.hidden = true; }, 150));
+  lista.addEventListener('mousedown', event => {
+    const li = event.target.closest('[data-mate-sug]');
+    if (!li) return;
+    event.preventDefault();
+    clearTimeout(timer);
+    mateElegirPaciente(input, MATE.sugerencias[Number(li.dataset.mateSug)]);
+  });
+  caja.querySelector('form').addEventListener('submit', event => { event.preventDefault(); clearTimeout(timer); lista.hidden = true; buscarAtenciones(); });
+  caja.querySelector('[data-mate-simple-limpiar]').addEventListener('click', () => {
+    clearTimeout(timer);
+    MATE.paciente = null;
+    mateSincronizarPaciente();
+    buscarAtenciones();
+  });
+}
+
+// Muestra el buscador simple o el panel según la pestaña elegida.
+function mateAplicarModo() {
+  const simple = document.getElementById('mateSimple');
+  const panel = document.getElementById('mateFiltros');
+  const activo = esModoMedico();
+  if (simple) simple.hidden = !activo || MATE.modo !== 'simple';
+  if (panel) panel.hidden = !activo || MATE.modo !== 'filtros';
+}
+
+// Cambio de pestaña en «Mis atenciones». Al volver a la pestaña simple se quitan los filtros del panel
+// (el paciente elegido se conserva) y la lista se vuelve a pedir.
+function mateCambiarModo(tab) {
+  const modo = tab === 'filtros' ? 'filtros' : 'simple';
+  const cambio = MATE.modo !== modo;
+  MATE.modo = modo;
+  if (cambio && modo === 'simple') {
+    const panel = document.getElementById('mateFiltros');
+    panel?.querySelectorAll('[data-mate]').forEach(el => { if (el.dataset.mate !== 'texto') el.value = ''; });
+    MATE.meses.clear();
+    panel?.querySelectorAll('[data-mate-mes]').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
+  }
+  mateAplicarModo();
+  if (cambio && document.getElementById('mateSimple')) buscarAtenciones();
+}
+
+function mateHtml() {
+  const o = MATE.opciones || { anios: [], servicios: [] };
+  const opcion = (valor, texto) => `<option value="${esc(valor)}">${esc(texto)}</option>`;
+  const meses = MESES_NOMBRE.map((m, i) => `<button type="button" class="nom-chip-btn" data-mate-mes="${i + 1}" aria-pressed="false" title="${esc(m)}">${i + 1}</button>`).join('');
+  return `<div class="nom-board mate-board">
+      <div class="nom-band">
+        <div class="nom-band-fields mate-band-fields">
+          <label class="nom-field"><span>Año</span><select class="input nom-input" data-mate="anio"><option value="">Todos</option>${o.anios.map(a => opcion(a, a)).join('')}</select></label>
+          <label class="nom-field"><span>Servicio</span><select class="input nom-input" data-mate="ups"><option value="">Todos</option>${o.servicios.map(s => opcion(s.id, `${histCasoNombre(s.nombre)} (${formatNumber(s.n)})`)).join('')}</select></label>
+          <label class="nom-field nom-sug"><span>Paciente</span><input class="input nom-input" data-mate="texto" type="search" autocomplete="off" placeholder="Nombre o DNI" role="combobox" aria-autocomplete="list"><ul class="nom-sug-list" role="listbox" hidden></ul></label>
+        </div>
+        <div class="nom-band-mes">
+          <span class="nom-mini-title">Mes</span>
+          <div class="nom-mes-grid" role="group" aria-label="Meses">${meses}</div>
+        </div>
+      </div>
+      <div class="nom-body nom-body-pac">
+        <section class="nom-col" aria-label="Diagnóstico y paciente">
+          <h4 class="nom-col-title"><span>1</span> Diagnóstico y paciente</h4>
+          <div class="nom-pac-grid">
+            <label class="nom-field"><span>Diagnóstico</span><input class="input nom-input" data-mate="codigo" type="search" autocomplete="off" placeholder="Ej. hipertensión, anemia o I10"></label>
+            <label class="nom-field"><span>Tipo de diagnóstico</span><select class="input nom-input" data-mate="td"><option value="">Todos</option>${opcion('D', 'Definitivo')}${opcion('P', 'Presuntivo')}${opcion('R', 'Repetido')}</select></label>
+            <label class="nom-field"><span>Sexo del paciente</span><select class="input nom-input" data-mate="sexo"><option value="">Todos</option>${opcion('F', 'Mujeres')}${opcion('M', 'Hombres')}</select></label>
+            <div class="nom-field"><span>Edad (años)</span><div class="mate-edad">
+              <input class="input nom-input" data-mate="edadMin" type="number" min="0" max="150" inputmode="numeric" placeholder="Desde" aria-label="Edad desde">
+              <input class="input nom-input" data-mate="edadMax" type="number" min="0" max="150" inputmode="numeric" placeholder="Hasta" aria-label="Edad hasta">
+            </div></div>
+          </div>
+        </section>
+      </div>
+      <div class="nom-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-mate-accion="buscar">Buscar</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-mate-accion="limpiar">Limpiar filtros</button>
+        <span class="nom-actions-spacer"></span>
+        <small class="mate-ayuda">Elige uno o varios filtros: la lista se actualiza sola.</small>
+      </div>
+    </div>`;
+}
+
+// Dibuja el panel la primera vez (con los años y servicios del médico) y conecta sus controles.
+async function iniciarMisAtenciones() {
+  const panel = document.getElementById('mateFiltros');
+  if (!panel || MATE.iniciado) return;
+  MATE.iniciado = true;
+  try {
+    MATE.opciones = (await apiFetch(`/busqueda/atenciones/citas?pagina=1&tam=1&opciones=1`)).opciones;
+  } catch (_) { MATE.opciones = null; }
+  panel.innerHTML = mateHtml();
+  // Pestaña simple: buscador de paciente encima de la misma lista.
+  panel.insertAdjacentHTML('beforebegin', mateSimpleHtml());
+  mateActivarSimple(document.getElementById('mateSimple'));
+  mateSincronizarPaciente();
+  mateAplicarModo();
+  let timer = null;
+  const buscarYa = () => { clearTimeout(timer); buscarAtenciones(); };
+  panel.addEventListener('change', event => { if (event.target.matches('select, input[type="number"]')) buscarYa(); });
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { panel.querySelectorAll('.nom-sug-list').forEach(l => { l.hidden = true; }); return; }
+    if (event.key !== 'Enter' || !event.target.matches('input')) return;
+    event.preventDefault();
+    // Enter en el campo de paciente con una sola sugerencia: se elige esa persona.
+    const lista = event.target.parentElement.querySelector('.nom-sug-list');
+    if (lista && !lista.hidden && MATE.sugerencias.length === 1) { mateElegirPaciente(event.target, MATE.sugerencias[0]); return; }
+    if (lista) lista.hidden = true;
+    buscarYa();
+  });
+  let sugTimer = null;
+  panel.addEventListener('input', event => {
+    if (!event.target.matches('input[type="search"]')) return;
+    if (event.target.dataset.mate === 'texto') {
+      MATE.paciente = null;
+      clearTimeout(sugTimer);
+      sugTimer = setTimeout(() => mateSugerir(event.target), 250);
+    }
+    clearTimeout(timer);
+    timer = setTimeout(buscarAtenciones, 600);
+  });
+  panel.addEventListener('mousedown', event => {
+    const li = event.target.closest('[data-mate-sug]');
+    if (!li) return;
+    event.preventDefault();
+    clearTimeout(timer);
+    mateElegirPaciente(panel.querySelector('[data-mate="texto"]'), MATE.sugerencias[Number(li.dataset.mateSug)]);
+  });
+  panel.addEventListener('focusout', event => {
+    if (event.target.dataset?.mate === 'texto') setTimeout(() => { const l = panel.querySelector('.nom-sug-list'); if (l) l.hidden = true; }, 150);
+  });
+  panel.addEventListener('click', event => {
+    const mes = event.target.closest('[data-mate-mes]');
+    if (mes) {
+      const n = Number(mes.dataset.mateMes);
+      if (MATE.meses.has(n)) MATE.meses.delete(n); else MATE.meses.add(n);
+      mes.classList.toggle('on', MATE.meses.has(n));
+      mes.setAttribute('aria-pressed', String(MATE.meses.has(n)));
+      buscarYa();
+      return;
+    }
+    const accion = event.target.closest('[data-mate-accion]')?.dataset.mateAccion;
+    if (accion === 'buscar') buscarYa();
+    if (accion === 'limpiar') {
+      panel.querySelectorAll('[data-mate]').forEach(el => { el.value = ''; });
+      MATE.meses.clear();
+      MATE.paciente = null;
+      panel.querySelectorAll('[data-mate-mes]').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
+      buscarYa();
+    }
+  });
+}
+
+async function buscarAtenciones({ siguiente = false } = {}) {
+  if (!siguiente && esModoMedico()) {
+    // «Mis atenciones»: los filtros salen del panel.
+    ATE.panel = mateValores();
+  } else if (!siguiente) {
+    ATE.panel = null;
+    ATE.q = gv('qAtenciones');
+    ATE.desde = gv('desdeAtenciones');
+    ATE.hasta = gv('hastaAtenciones');
+    if (!ATE.q && !ATE.desde && !ATE.hasta && !esModoMedico()) { toast('Escribe un dato o elige un rango de fechas.', 'info'); document.getElementById('qAtenciones').focus(); return; }
+    if (ATE.desde && ATE.hasta && ATE.desde > ATE.hasta) { toast('La fecha «Desde» no puede ser posterior a «Hasta».', 'error'); return; }
+  }
+  const pagina = siguiente ? ATE.pagina + 1 : 1;
+  const params = new URLSearchParams({ pagina: String(pagina), tam: String(ATE_PASO) });
+  if (ATE.panel) {
+    Object.entries(ATE.panel).forEach(([clave, valor]) => { if (valor) params.set(clave, valor); });
+  } else {
+    if (ATE.q) params.set('texto', ATE.q);
+    if (ATE.desde) params.set('desde', ATE.desde);
+    if (ATE.hasta) params.set('hasta', ATE.hasta);
+  }
+  if (!siguiente) params.set('resumen', '1');
+  const seq = ++searchSeq.atenciones;
+  if (!siguiente) estadoBusqueda('resAtenciones', 'Buscando atenciones…');
+  try {
+    const datos = await apiFetch(`/busqueda/atenciones/citas?${params}`);
+    if (seq !== searchSeq.atenciones) return;
+    ATE.filas = siguiente ? [...ATE.filas, ...datos.filas] : datos.filas;
+    ATE.total = datos.totalCitas;
+    ATE.pagina = pagina;
+    if (datos.resumen) ATE.resumen = datos.resumen;
+    pintarAtencionesPaginadas();
+  } catch (error) {
+    if (seq !== searchSeq.atenciones) return;
+    if (siguiente) { toast(error.message || 'No se pudieron cargar más atenciones.', 'error'); pintarAtencionesPaginadas(); return; }
+    estadoBusqueda('resAtenciones', error.message || 'No se pudo buscar.', 'error');
+  }
+}
+
+function pintarAtencionesPaginadas() {
+  const el = document.getElementById('resAtenciones');
+  const conFiltrosPanel = ATE.panel && Object.values(ATE.panel).some(Boolean);
+  if (!ATE.filas.length) {
+    estadoBusqueda('resAtenciones', ATE.panel && !conFiltrosPanel
+      ? 'Todavía no tienes atenciones registradas en el HIS.' : 'No se encontraron atenciones con esos filtros.');
+    return;
+  }
+  const cargadas = new Set(ATE.filas.map(r => String(r.Id_Cita))).size;
+  const p = ATE.panel || {};
+  const servicio = p.ups ? (MATE.opciones?.servicios || []).find(s => s.id === p.ups)?.nombre || p.ups : null;
+  registrarExportAtenciones('atenciones', ATE.filas, esModoMedico() ? 'Reporte de mis atenciones' : 'Reporte de atenciones', [
+    ['Paciente', p.idPaciente ? (MATE.paciente?.Paciente || p.idPaciente) : null],
+    ['Búsqueda', ATE.q || p.texto || null], ['Desde', ATE.desde ? formatIsoDate(ATE.desde) : null], ['Hasta', ATE.hasta ? formatIsoDate(ATE.hasta) : null],
+    ['Año', p.anio || null], ['Meses', p.meses || null], ['Servicio', servicio], ['Diagnóstico o código', p.codigo || null],
+    ['Tipo de diagnóstico', { D: 'Definitivo', P: 'Presuntivo', R: 'Repetido' }[p.td] || null], ['Sexo', { F: 'Mujeres', M: 'Hombres' }[p.sexo] || null],
+    ['Edad', p.edadMin || p.edadMax ? `${p.edadMin || 0} a ${p.edadMax || 'más'} años` : null],
+    cargadas < ATE.total ? ['Nota', `Incluye las ${formatNumber(cargadas)} atenciones cargadas de ${formatNumber(ATE.total)}. Pulsa «Ver más» para incluir más.`] : null
+  ].filter(x => x && x[1]), 'atenciones');
+  el.innerHTML = `<div class="pac-mini-slot" id="ateMiniFicha"></div>
+    <div class="result-toolbar"><p class="result-summary">${formatNumber(ATE.total)} ${ATE.total === 1 ? 'atención' : 'atenciones'}${esModoMedico() ? ' tuyas' : ''}</p>${botonesExportarHtml('atenciones')}</div>
+    <div id="resAtencionesHist"></div>`;
+  // Si se buscó a una persona y todo es de un solo paciente, sus datos aparecen solos arriba.
+  const buscoPersona = Boolean(p.idPaciente || p.texto || ATE.q);
+  const unico = psPacienteUnico(ATE.filas);
+  const idFicha = p.idPaciente || (buscoPersona && unico && cargadas >= ATE.total ? unico : '');
+  psMostrarMiniFicha(document.getElementById('ateMiniFicha'), idFicha);
+  histPintar(document.getElementById('resAtencionesHist'), ATE.filas, {
+    contexto: esModoMedico() ? 'personal' : 'busqueda',
+    servidor: { total: ATE.total, resumen: ATE.resumen, paso: ATE_PASO, onMas: () => buscarAtenciones({ siguiente: true }) }
+  });
 }
 
 // Insignia del tipo de diagnóstico (la usa la búsqueda nominal).
@@ -4320,8 +4697,247 @@ function setupHomeView() {
   });
 }
 
+// ── Inicio del médico ──
+// Portada con la fecha, el saludo, un buscador con sugerencias y sus tres cifras; debajo, sus últimos pacientes,
+// sus atenciones por mes y lo que más diagnostica. Frases cortas y todo a un clic, para quien no conoce el sistema.
+function nombreParaSaludo(nombreCompleto) {
+  // En el catálogo HIS el nombre viene como «APELLIDO_P APELLIDO_M NOMBRES»: se saluda por los nombres.
+  const partes = String(nombreCompleto || '').trim().split(/\s+/).filter(Boolean);
+  const nombres = partes.length >= 3 ? partes.slice(2).join(' ') : partes.join(' ');
+  return histCasoNombre(nombres, { siglas: false });
+}
+
+// «hoy», «ayer», «hace 5 días», «hace 2 meses»…
+function haceCuanto(fechaIso) {
+  const f = histFechaIso(fechaIso);
+  if (!f) return '';
+  const [y, m, d] = f.split('-').map(Number);
+  const hoy = new Date();
+  const dias = Math.round((new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) - new Date(y, m - 1, d)) / 86400000);
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  if (dias < 30) return `hace ${dias} días`;
+  const meses = Math.round(dias / 30);
+  if (meses < 12) return meses === 1 ? 'hace 1 mes' : `hace ${meses} meses`;
+  const anios = Math.round(dias / 365);
+  return anios === 1 ? 'hace 1 año' : `hace ${anios} años`;
+}
+
+const IM_ICONOS = {
+  pacientes: '<path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>',
+  atenciones: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
+  calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+  reporte: '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 17v-3M12 17v-6M15 17v-4"/>',
+  filtros: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  buscar: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'
+};
+const imIcono = (nombre, tam = 20) => `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IM_ICONOS[nombre]}</svg>`;
+
+async function cargarInicioMedico() {
+  const box = document.getElementById('inicioMedico');
+  if (!box) return;
+  const ahora = new Date();
+  const hora = ahora.getHours();
+  const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const nombre = nombreParaSaludo(currentUser?.fullName);
+  const fecha = ahora.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const kpi = (id, icono, titulo, destino) => `<button type="button" class="im-kpi" data-im-ir="${destino}">
+      <span class="im-kpi-ico">${imIcono(icono, 18)}</span>
+      <span class="im-kpi-txt"><small>${titulo}</small><strong id="${id}">…</strong><em id="${id}Det"></em></span></button>`;
+  const atajo = (icono, titulo, texto, accion) => `<button type="button" class="im-atajo" data-im-accion="${accion}">
+      <span class="im-atajo-ico">${imIcono(icono, 22)}</span><span><strong>${titulo}</strong><small>${texto}</small></span></button>`;
+
+  box.innerHTML = `
+    <section class="im-hero">
+      <span class="im-hero-luz" aria-hidden="true"></span>
+      <div class="im-hero-txt">
+        <p class="im-fecha">${esc(fecha)}</p>
+        <h2>${esc(saludo)}${nombre ? `, ${esc(nombre)}` : ''}</h2>
+        <p class="im-sub">¿A qué paciente quieres ver hoy?</p>
+        <form class="im-buscar" id="imBuscar" role="search" autocomplete="off">
+          ${imIcono('buscar', 22)}
+          <input id="imInput" type="search" placeholder="Nombre, DNI o historia clínica" aria-label="Buscar uno de mis pacientes"
+            role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="imSug" enterkeyhint="search">
+          <button type="submit" class="btn btn-primary">Buscar</button>
+          <ul class="im-sug" id="imSug" role="listbox" hidden></ul>
+        </form>
+        <p class="im-nota">Solo aparecen los pacientes que tú has atendido.</p>
+      </div>
+      <div class="im-kpis">
+        ${kpi('imPacientes', 'pacientes', 'Mis pacientes', 'pacientes')}
+        ${kpi('imMes', 'atenciones', 'Atenciones del último mes', 'atenciones')}
+        ${kpi('imUltima', 'calendario', 'Mi última atención', 'personal')}
+      </div>
+    </section>
+
+    <div class="im-atajos">
+      ${atajo('atenciones', 'Mis atenciones', 'Todas, con filtros sencillos', 'atenciones')}
+      ${atajo('reporte', 'Mi reporte del mes', 'Tu producción día por día', 'reporte')}
+      ${atajo('filtros', 'Buscar con filtros', 'Por diagnóstico, edad o fecha', 'filtros')}
+    </div>
+
+    <div class="im-grid">
+      <section class="im-card" aria-labelledby="imRecientesTitulo">
+        <div class="im-card-head">
+          <div><h3 id="imRecientesTitulo">Tus últimos pacientes</h3><p>Pulsa uno para ver toda su historia</p></div>
+          <button type="button" class="btn btn-secondary btn-sm" data-im-ir="pacientes">Ver todos</button>
+        </div>
+        <ul class="im-pacientes" id="imLista"><li class="im-vacio"><span class="ps-spinner" aria-hidden="true"></span> Cargando…</li></ul>
+      </section>
+      <div class="im-col">
+        <section class="im-card" aria-labelledby="imMesesTitulo">
+          <div class="im-card-head"><div><h3 id="imMesesTitulo">Tus atenciones por mes</h3><p id="imMesesSub">Últimos meses</p></div></div>
+          <div class="im-barras" id="imMeses"><div class="im-vacio"><span class="ps-spinner" aria-hidden="true"></span> Cargando…</div></div>
+        </section>
+        <section class="im-card" aria-labelledby="imDxTitulo">
+          <div class="im-card-head"><div><h3 id="imDxTitulo">Lo que más diagnosticas</h3><p>En todas tus atenciones</p></div></div>
+          <ol class="im-dx" id="imDx"><li class="im-vacio"><span class="ps-spinner" aria-hidden="true"></span> Cargando…</li></ol>
+        </section>
+      </div>
+    </div>`;
+
+  imActivar(box);
+
+  const [pacientes, citas, reporte] = await Promise.allSettled([
+    apiFetch('/busqueda/mis-pacientes?pagina=1&tam=8'),
+    apiFetch('/busqueda/atenciones/citas?pagina=1&tam=1&periodos=1&resumen=1'),
+    apiFetch('/atenciones/reportes')
+  ]);
+  const poner = (id, texto) => { const el = document.getElementById(id); if (el) el.textContent = texto; };
+
+  // Cifras y últimos pacientes
+  const lista = document.getElementById('imLista');
+  if (pacientes.status === 'fulfilled') {
+    const { total, filas, sinPersonal } = pacientes.value;
+    poner('imPacientes', formatNumber(total || 0));
+    poner('imPacientesDet', 'personas que has atendido');
+    poner('imUltima', filas[0]?.UltimaAtencion ? histFechaTexto(filas[0].UltimaAtencion) : '—');
+    poner('imUltimaDet', filas[0]?.UltimaAtencion ? haceCuanto(filas[0].UltimaAtencion) : '');
+    if (lista) lista.innerHTML = sinPersonal
+      ? '<li class="im-vacio">Tu cuenta aún no está ligada a tu registro del HIS. Pide ayuda al administrador.</li>'
+      : filas.length
+        ? filas.map(p => {
+          const sexo = psSexo(p.Sexo);
+          return `<li><button type="button" class="im-paciente" data-im-paciente="${esc(p.Id_Paciente)}">
+            <span class="ps-mini-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
+            <span class="im-paciente-txt"><strong>${esc(histCasoNombre(p.Paciente || 'Sin nombre', { siglas: false }))}</strong>
+              <small>${esc([psEdad(p.FechaNacimiento), sexo].filter(Boolean).join(' · '))}${p.Documento ? ` · DNI ${esc(p.Documento)}` : ''}</small></span>
+            <span class="im-paciente-cuando" title="${esc(histFechaTexto(p.UltimaAtencion))}">${esc(haceCuanto(p.UltimaAtencion))}</span>
+          </button></li>`;
+        }).join('')
+        : '<li class="im-vacio">Todavía no tienes pacientes atendidos en el HIS.</li>';
+  } else {
+    ['imPacientes', 'imUltima'].forEach(id => poner(id, '—'));
+    if (lista) lista.innerHTML = '<li class="im-vacio">No se pudo cargar la lista. Recarga la página.</li>';
+  }
+
+  // Último mes y diagnósticos más frecuentes
+  const dx = document.getElementById('imDx');
+  if (citas.status === 'fulfilled') {
+    poner('imMes', formatNumber(citas.value.periodos?.mes || 0));
+    poner('imMesDet', 'citas en los últimos 30 días');
+    const lista5 = (citas.value.resumen?.diagnosticos || []).slice(0, 5);
+    const max = lista5[0]?.n || 1;
+    if (dx) dx.innerHTML = lista5.length
+      ? lista5.map(d => `<li style="--w:${Math.max(8, Math.round((d.n / max) * 100))}%">
+          <span class="im-dx-desc" title="${esc(d.desc || '')}">${esc(histCasoNombre(d.desc || 'Sin descripción'))}</span>
+          <code>${esc(d.cod)}</code><b>${formatNumber(d.n)}</b></li>`).join('')
+      : '<li class="im-vacio">Aún no hay diagnósticos registrados.</li>';
+  } else {
+    poner('imMes', '—');
+    if (dx) dx.innerHTML = '<li class="im-vacio">No se pudo cargar.</li>';
+  }
+
+  // Atenciones por mes (últimos 8 meses con datos)
+  const meses = document.getElementById('imMeses');
+  if (reporte.status === 'fulfilled' && meses) {
+    const serie = [...(reporte.value.porMes || [])].sort((a, b) => String(a.periodo).localeCompare(String(b.periodo))).slice(-8);
+    if (!serie.length) { meses.innerHTML = '<div class="im-vacio">Aún no hay atenciones registradas.</div>'; return; }
+    const max = Math.max(...serie.map(m => Number(m.atenciones) || 0), 1);
+    const ultimo = serie.length - 1;
+    poner('imMesesSub', `${MESES_NOMBRE[Number(serie[0].periodo.slice(5, 7)) - 1]} a ${MESES_NOMBRE[Number(serie[ultimo].periodo.slice(5, 7)) - 1].toLowerCase()} ${serie[ultimo].periodo.slice(0, 4)}`);
+    meses.innerHTML = serie.map((m, i) => {
+      const n = Number(m.atenciones) || 0;
+      const mes = MESES_NOMBRE[Number(String(m.periodo).slice(5, 7)) - 1] || m.periodo;
+      return `<div class="im-barra${i === ultimo ? ' actual' : ''}" title="${esc(`${mes} ${String(m.periodo).slice(0, 4)}: ${formatNumber(n)} atenciones`)}">
+          <span class="im-barra-n">${formatNumber(n)}</span>
+          <span class="im-barra-pista"><i style="height:${Math.max(3, Math.round((n / max) * 100))}%"></i></span>
+          <span class="im-barra-mes">${esc(mes.slice(0, 3))}</span></div>`;
+    }).join('');
+  } else if (meses) {
+    meses.innerHTML = '<div class="im-vacio">No se pudo cargar.</div>';
+  }
+}
+
+// Buscador con sugerencias (solo sus pacientes), cifras y atajos.
+function imActivar(box) {
+  const form = box.querySelector('#imBuscar');
+  const input = box.querySelector('#imInput');
+  const lista = box.querySelector('#imSug');
+  let filas = [];
+  let timer = null;
+  let seq = 0;
+  const cerrar = () => { lista.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const abrirPaciente = id => { showView('pacientes'); abrirPacienteSimplePorId(id); };
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const texto = input.value.trim();
+    if (texto.length < 2) { cerrar(); return; }
+    timer = setTimeout(async () => {
+      const mio = ++seq;
+      try {
+        filas = await apiFetch(`/busqueda/pacientes/sugerencias?q=${encodeURIComponent(texto)}&limite=6`);
+        if (mio !== seq || input.value.trim() !== texto) return;
+        lista.innerHTML = filas.length
+          ? filas.map((p, i) => `<li role="option" data-i="${i}"><span class="ps-mini-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
+              <span><strong>${esc(histCasoNombre(p.Paciente || 'Sin nombre', { siglas: false }))}</strong>
+              <small>${esc([p.Documento ? `DNI ${p.Documento}` : '', psEdad(p.FechaNacimiento)].filter(Boolean).join(' · '))}</small></span></li>`).join('')
+          : '<li class="im-sug-vacio">Ninguno de tus pacientes coincide.</li>';
+        lista.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+      } catch (_) { cerrar(); }
+    }, 250);
+  });
+  lista.addEventListener('mousedown', event => {
+    const li = event.target.closest('li[data-i]');
+    if (!li) return;
+    event.preventDefault();
+    abrirPaciente(filas[Number(li.dataset.i)].Id_Paciente);
+  });
+  input.addEventListener('blur', () => setTimeout(cerrar, 150));
+  input.addEventListener('keydown', event => { if (event.key === 'Escape') cerrar(); });
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const texto = input.value.trim();
+    if (texto.length < 2) { toast('Escribe al menos 2 letras o números.', 'info'); input.focus(); return; }
+    cerrar();
+    showView('pacientes');
+    buscarPacienteSimple(texto);
+  });
+
+  box.addEventListener('click', event => {
+    const ir = event.target.closest('[data-im-ir]');
+    if (ir) { showView(ir.dataset.imIr); return; }
+    const pac = event.target.closest('[data-im-paciente]');
+    if (pac) { abrirPaciente(pac.dataset.imPaciente); return; }
+    const accion = event.target.closest('[data-im-accion]')?.dataset.imAccion;
+    if (accion === 'atenciones') showView('atenciones');
+    if (accion === 'reporte') {
+      showView('personal');
+      // Lleva al reporte mensual de su ficha cuando ya está dibujada.
+      setTimeout(() => document.querySelector('#view-personal .ps-reporte')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 900);
+    }
+    if (accion === 'filtros') { showView('pacientes'); document.getElementById('pacTabAvanzada')?.click(); }
+  });
+}
+
 // Saludo, cifras generales y citas por mes (mismos datos del resumen analítico del dashboard)
 async function cargarInicio() {
+  // El médico ve su propio Inicio (más simple); la portada general queda oculta por css («Modo médico»).
+  const inicioMedico = document.getElementById('inicioMedico');
+  if (inicioMedico) inicioMedico.hidden = !esModoMedico();
+  if (esModoMedico()) { cargarInicioMedico(); return; }
   const hour = new Date().getHours();
   const firstName = String(currentUser?.fullName || currentUser?.username || '').trim().split(/\s+/)[0] || '';
   const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';

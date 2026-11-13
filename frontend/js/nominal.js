@@ -52,6 +52,10 @@ const NOM_ETIQUETAS = {
   difRegistro: 'Atención vs. registro', estado: 'Estado del registro'
 };
 
+// Nombres sencillos para el médico (sin siglas del HIS).
+const NOM_ETIQUETAS_SIMPLES = { paciente: 'Paciente (nombre o DNI)', codigo: 'Diagnóstico (nombre o código)', ups: 'Servicio', td: 'Tipo de diagnóstico', lab: 'Resultado de laboratorio', grupo: 'Grupo de riesgo', gestante: 'Gestante' };
+const nomEtiqueta = clave => (accesoRestringido() && NOM_ETIQUETAS_SIMPLES[clave]) || NOM_ETIQUETAS[clave];
+
 const NOM_DIF = [['0', 'Mismo día'], ['1', '1 día después'], ['2-7', '2 a 7 días'], ['8-30', '8 a 30 días'], ['31+', 'Más de 30 días']];
 const NOM_ESTADO = [['original', 'Sin modificar'], ['modificado', 'Registro modificado']];
 const NOM_TIPO_EDAD = { A: 'Años', M: 'Meses', D: 'Días' };
@@ -59,13 +63,14 @@ const NOM_TD = { D: 'D · Definitivo', P: 'P · Presuntivo', R: 'R · Repetido' 
 const NOM_TURNO = { M: 'M · Mañana', T: 'T · Tarde', N: 'N · Noche' };
 
 // ── Pestañas de la vista Pacientes ──
-// «simple»: buscador para médicos. «filtros»: búsqueda avanzada (no se muestra a los usuarios con rol de médico).
-const esRolMedico = () => currentUser?.role === 'doctor';
+// «simple»: buscador. «filtros»: búsqueda avanzada. Un médico «solo sus pacientes» también la usa:
+// el servidor limita los resultados a sus pacientes (en Pacientes) o a sus atenciones (en Atenciones y Personal).
+const accesoRestringido = () => currentUser?.access === 'restringido';
 
 function cambiarTabPacientes(tab, { recordar = true } = {}) {
-  if (tab !== 'filtros' || esRolMedico()) tab = 'simple';
+  if (tab !== 'filtros') tab = 'simple';
   const avanzada = document.getElementById('pacTabAvanzada');
-  if (avanzada) avanzada.hidden = esRolMedico();
+  if (avanzada) avanzada.hidden = false;
   document.querySelectorAll('[data-pac-tab]').forEach(b => {
     const activa = b.dataset.pacTab === tab;
     b.classList.toggle('active', activa);
@@ -74,8 +79,47 @@ function cambiarTabPacientes(tab, { recordar = true } = {}) {
   document.getElementById('pacPanelFiltros').hidden = tab !== 'filtros';
   document.getElementById('pacPanelSimple').hidden = tab !== 'simple';
   if (recordar) { try { localStorage.setItem('his_pac_tab', tab); } catch (_) { /* sin almacenamiento */ } }
-  if (tab === 'filtros') iniciarBusquedaNominal('pacientes');
-  else iniciarPacienteSimple();
+  if (tab === 'filtros') {
+    const st = NOM_INSTANCIAS.pacientes;
+    // Ya iniciada: si hay un paciente abierto distinto del filtro, se pone como filtro y se vuelve a buscar.
+    if (st.iniciado && st.opciones && pasarPacienteAbierto(st)) {
+      NOM = st;
+      reflejarPacienteEnPanel(st);
+      buscarNominal();
+    } else {
+      iniciarBusquedaNominal('pacientes');
+    }
+  } else iniciarPacienteSimple();
+}
+
+// ── Paciente abierto → búsqueda avanzada ──
+// Si en «Buscar paciente» hay una ficha abierta, al pasar a la búsqueda avanzada ese paciente queda como filtro
+// (como si se hubiera elegido de las sugerencias), sin año ni meses para ver toda su historia. Devuelve true si cambió algo.
+function pasarPacienteAbierto(st) {
+  const p = typeof PS !== 'undefined' ? PS.paciente : null;
+  const id = String(p?.Id_Paciente ?? '').trim();
+  // Se pasa una sola vez por paciente abierto: si luego se quita el filtro, no vuelve a ponerse solo.
+  if (!id || st.pacientePasado === id) return false;
+  st.pacientePasado = id;
+  if (st.valores.paciente__id && String(st.valores.paciente) === id) return false;
+  st.valores.paciente = id;
+  st.valores.paciente__id = '1';
+  st.etiquetas.paciente = [p.Paciente, p.Documento ? `DNI ${p.Documento}` : ''].filter(Boolean).join(' · ') || id;
+  delete st.valores.anio;
+  st.meses.clear();
+  st.dias.clear();
+  return true;
+}
+
+// Muestra en el panel ya dibujado el paciente puesto como filtro (texto, año y meses).
+function reflejarPacienteEnPanel(st) {
+  const box = document.getElementById(st.appId);
+  if (!box) return;
+  const input = box.querySelector('input[data-nom="paciente"]');
+  if (input) input.value = st.etiquetas.paciente || '';
+  const anio = box.querySelector('select[data-nom="anio"]');
+  if (anio) anio.value = '';
+  box.querySelectorAll('[data-mes].on, [data-dia].on').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
 }
 
 // id: paciente de la URL (#pacientes/123) al recargar o con Atrás/Adelante; '' si la URL no trae paciente.
@@ -92,11 +136,12 @@ function abrirVistaPacientes({ id } = {}) {
 }
 
 // ── Pestañas de la vista Personal ──
-// «simple»: ficha del profesional. «filtros»: atenciones con filtros por personal (mismo criterio de rol que Pacientes).
+// «simple»: ficha del profesional. «filtros»: atenciones con filtros por personal (mismo criterio de acceso que Pacientes).
 function cambiarTabPersonal(tab, { recordar = true } = {}) {
-  if (tab !== 'filtros' || esRolMedico()) tab = 'simple';
+  // «Mi producción» del médico: una sola pestaña (su ficha); los filtros están en «Mis atenciones».
+  if (tab !== 'filtros' || accesoRestringido()) tab = 'simple';
   const avanzada = document.getElementById('perTabAvanzada');
-  if (avanzada) avanzada.hidden = esRolMedico();
+  if (avanzada) avanzada.hidden = accesoRestringido();
   document.querySelectorAll('[data-per-tab]').forEach(b => {
     const activa = b.dataset.perTab === tab;
     b.classList.toggle('active', activa);
@@ -111,6 +156,17 @@ function cambiarTabPersonal(tab, { recordar = true } = {}) {
 
 // id: profesional de la URL (#personal/123) al recargar o con Atrás/Adelante; '' si la URL no trae profesional.
 function abrirVistaPersonal({ id } = {}) {
+  // «Mis datos»: el médico restringido abre siempre su propia ficha, sin buscador.
+  if (accesoRestringido()) {
+    const mio = String(currentUser?.personalId || '');
+    cambiarTabPersonal('simple', { recordar: false });
+    if (!mio) {
+      document.getElementById('pfsResultado').innerHTML = '<div class="ps-vacio"><h3>Tu cuenta no está ligada a un profesional del HIS</h3><p>Pide a un administrador que la vincule a tu registro de personal para ver tus datos.</p></div>';
+    } else if (String(PFS.personal?.Id_Personal) !== mio) {
+      abrirPersonalSimplePorId(mio);
+    }
+    return;
+  }
   if (id) {
     if (String(PFS.personal?.Id_Personal) === id) cambiarTabPersonal('simple', { recordar: false });
     else abrirPersonalSimplePorId(id);
@@ -125,24 +181,36 @@ function abrirVistaPersonal({ id } = {}) {
 // ── Pestañas de la vista Atenciones ──
 // «simple»: buscador por cita, paciente, personal o código. «filtros»: atenciones con todos los filtros del HIS.
 function cambiarTabAtenciones(tab, { recordar = true } = {}) {
-  if (tab !== 'filtros' || esRolMedico()) tab = 'simple';
+  // Médico: «Mis atenciones» muestra la lista con un buscador de paciente y «Buscar con filtros» el panel de filtros
+  // sobre la misma lista (no la búsqueda avanzada general).
+  if (tab !== 'filtros') tab = 'simple';
   const avanzada = document.getElementById('ateTabAvanzada');
-  if (avanzada) avanzada.hidden = esRolMedico();
+  if (avanzada) avanzada.hidden = false;
   document.querySelectorAll('[data-ate-tab]').forEach(b => {
     const activa = b.dataset.ateTab === tab;
     b.classList.toggle('active', activa);
     b.setAttribute('aria-selected', String(activa));
   });
-  document.getElementById('atePanelFiltros').hidden = tab !== 'filtros';
-  document.getElementById('atePanelSimple').hidden = tab !== 'simple';
+  const medico = accesoRestringido();
+  document.getElementById('atePanelFiltros').hidden = medico || tab !== 'filtros';
+  document.getElementById('atePanelSimple').hidden = !medico && tab !== 'simple';
   if (recordar) { try { localStorage.setItem('his_ate_tab', tab); } catch (_) { /* sin almacenamiento */ } }
-  if (tab === 'filtros') iniciarBusquedaNominal('atenciones');
+  if (medico) mateCambiarModo(tab);
+  else if (tab === 'filtros') iniciarBusquedaNominal('atenciones');
 }
 
 function abrirVistaAtenciones() {
   let tab = 'simple';
   try { tab = localStorage.getItem('his_ate_tab') || 'simple'; } catch (_) { /* sin almacenamiento */ }
   cambiarTabAtenciones(tab);
+  // «Mis atenciones»: la primera vez se cargan solas todas sus atenciones, de 20 en 20 (el servidor solo da las suyas).
+  const resultado = document.getElementById('resAtenciones');
+  if (accesoRestringido()) {
+    iniciarMisAtenciones().then(() => {
+      // El paciente abierto en «Mis pacientes» entra como filtro del panel, sin volver a escribirlo.
+      if (pasarPacienteAMisAtenciones() || (resultado && !resultado.innerHTML.trim())) buscarAtenciones();
+    });
+  }
 }
 
 // Desde la tabla avanzada: abre al paciente en la búsqueda simple (por su documento).
@@ -169,6 +237,8 @@ async function iniciarBusquedaNominal(tipo = 'pacientes') {
   }
   NOM = st;
   if (st.opciones.anios?.length) st.valores.anio = String(st.opciones.anios[0]);
+  // En Pacientes, el paciente abierto en la búsqueda simple entra como filtro (y quita el año por defecto).
+  if (tipo === 'pacientes') pasarPacienteAbierto(st);
   box.innerHTML = htmlPanelNominal();
   activarPanelNominal(box, st);
   actualizarTerritorio();
@@ -189,7 +259,7 @@ const nomOpt = (valor, texto, actual) => `<option value="${esc(valor)}"${String(
 
 function nomSelect(clave, opciones, { todas = 'Todas', ancho = '' } = {}) {
   const actual = NOM.valores[clave] || '';
-  return `<label class="nom-field${ancho ? ` nom-${ancho}` : ''}"><span>${esc(NOM_ETIQUETAS[clave])}</span>
+  return `<label class="nom-field${ancho ? ` nom-${ancho}` : ''}"><span>${esc(nomEtiqueta(clave))}</span>
     <select class="input nom-input" data-nom="${clave}">
       <option value="">${esc(todas)}</option>
       ${opciones.map(([v, t]) => nomOpt(v, t, actual)).join('')}
@@ -198,7 +268,7 @@ function nomSelect(clave, opciones, { todas = 'Todas', ancho = '' } = {}) {
 
 function nomTexto(clave, { placeholder = 'Todas', tipo = 'text', ancho = '' } = {}) {
   const sugerido = NOM_SUGERIDOS[clave];
-  return `<label class="nom-field${ancho ? ` nom-${ancho}` : ''}${sugerido ? ' nom-sug' : ''}"><span>${esc(NOM_ETIQUETAS[clave])}</span>
+  return `<label class="nom-field${ancho ? ` nom-${ancho}` : ''}${sugerido ? ' nom-sug' : ''}"><span>${esc(nomEtiqueta(clave))}</span>
     <input class="input nom-input" data-nom="${clave}" type="${tipo}" ${tipo === 'number' ? 'min="0" inputmode="numeric"' : ''} autocomplete="off" placeholder="${esc(placeholder)}" value="${esc(NOM.etiquetas[clave] || NOM.valores[clave] || '')}">
     ${sugerido ? `<ul class="nom-sug-list" role="listbox" hidden></ul>` : ''}</label>`;
 }
@@ -270,7 +340,7 @@ function htmlColumnasAtenciones(o) {
         </div>
       </section>
       <section class="nom-col" aria-label="Servicio y personal">
-        <h4 class="nom-col-title"><span>2</span> Servicio y personal</h4>
+        <h4 class="nom-col-title"><span>2</span> ${accesoRestringido() ? 'Servicio' : 'Servicio y personal'}</h4>
         ${nomSelect('ups', (o.ups || []).map(u => [u.id, u.nombre || u.id]), { todas: 'Todos' })}
         <div class="nom-row">
           ${nomSelect('turno', conTexto(o.turnos, NOM_TURNO), { todas: 'Todos' })}
@@ -437,7 +507,7 @@ async function cargarSugerencias(input) {
   const texto = input.value.trim();
   if (texto.length < 2) { lista.hidden = true; return; }
   try {
-    let filas = await apiFetch(`/nominal/sugerencias?campo=${encodeURIComponent(NOM_SUGERIDOS[clave][0])}&q=${encodeURIComponent(texto)}`);
+    let filas = await apiFetch(`/nominal/sugerencias?campo=${encodeURIComponent(NOM_SUGERIDOS[clave][0])}&q=${encodeURIComponent(texto)}&vista=${encodeURIComponent(NOM.tipo)}`);
     if (input.value.trim() !== texto) return;
     if (!filas.length) { lista.innerHTML = '<li class="vacio" aria-disabled="true">Sin coincidencias · pulsa Enter para buscar el texto</li>'; lista.hidden = false; return; }
     // Si el maestro repite un paciente, se muestra una sola vez por Id.
@@ -581,6 +651,8 @@ async function buscarNominal({ mantenerPagina = false } = {}) {
   }
   params.set('pagina', String(st.pagina));
   params.set('tam', String(st.tam));
+  // Para un médico «solo sus pacientes», el servidor limita según la vista: Pacientes → sus pacientes; otras → sus atenciones.
+  params.set('vista', st.tipo);
   const seq = ++st.seq;
   res.classList.add('nom-cargando');
   if (!st.datos) res.innerHTML = '<div class="table-empty">Buscando registros…</div>';
@@ -590,6 +662,17 @@ async function buscarNominal({ mantenerPagina = false } = {}) {
     st.datos = datos;
     NOM = st;
     res.innerHTML = htmlResultadoNominal(datos);
+    // Si se buscó a una persona y los resultados son de un solo paciente, sus datos aparecen solos arriba.
+    const buscaPersona = ['paciente', 'idPaciente', 'historia', 'cita'].some(c => st.valores[c]);
+    const todasEnPagina = Number(datos.total || 0) <= (datos.filas || []).length;
+    const unico = psPacienteUnico(datos.filas);
+    // Elegido de las sugerencias: «paciente» guarda el Id_Paciente y «paciente__id» lo marca.
+    const idElegido = st.valores.paciente__id ? st.valores.paciente : '';
+    const id = buscaPersona ? (idElegido || (unico && (todasEnPagina || st.valores.idPaciente || st.valores.historia || st.valores.cita) ? unico : '')) : '';
+    if (id) {
+      res.insertAdjacentHTML('afterbegin', '<div class="pac-mini-slot"></div>');
+      psMostrarMiniFicha(res.querySelector('.pac-mini-slot'), id);
+    }
   } catch (error) {
     if (seq !== st.seq) return;
     st.datos = null;
@@ -643,6 +726,14 @@ const NOM_COLUMNAS = [
   ['Estado', 'nowrap', r => (r.Fecha_Modificacion ? '<span class="nom-estado mod">Modificado</span>' : '<span class="nom-estado">Original</span>')]
 ];
 
+// Médico «solo sus pacientes»: tabla sin columnas técnicas y con nombres sencillos.
+const NOM_COLUMNAS_TECNICAS = new Set(['IPRESS', 'Sistema', 'Lote | Pág | Reg', 'Tipo doc.', 'Registrador', 'Id_Paciente', 'Edad actual',
+  'Fecha registro', 'Atenc. → registro', 'Fecha modificación', 'Estado']);
+const NOM_TITULOS_SIMPLES = { 'Servicio UPS': 'Servicio', Documento: 'DNI', 'Descripción del ítem': 'Diagnóstico o procedimiento', 'Peso | Talla | PAb | Hb': 'Peso | Talla | Abdomen | Hb', Personal: 'Atendido por' };
+const nomColumnas = () => (accesoRestringido()
+  ? NOM_COLUMNAS.filter(([titulo]) => !NOM_COLUMNAS_TECNICAS.has(titulo)).map(([titulo, ...resto]) => [NOM_TITULOS_SIMPLES[titulo] || titulo, ...resto])
+  : NOM_COLUMNAS);
+
 const nomPlural = (n, uno, varios) => `${formatNumber(n)} ${n === 1 ? uno : varios}`;
 
 function htmlResultadoNominal(datos) {
@@ -663,9 +754,9 @@ function htmlResultadoNominal(datos) {
       const [y, m, d] = fecha.split('-').map(Number);
       const nombreDia = y ? NOM_DIAS_SEMANA[new Date(y, m - 1, d).getDay()] : 'Sin fecha';
       const abierta = NOM.abiertas.has(fecha);
-      separador = `<tr class="nom-sep${abierta ? '' : ' plegada'}" data-sep="${esc(fecha)}"><td colspan="${NOM_COLUMNAS.length + 1}"><span class="nom-sep-in"><button type="button" class="nom-toggle" data-nom-toggle="${esc(fecha)}" aria-expanded="${abierta}" title="${abierta ? 'Contraer' : 'Expandir'} los registros de este día">${abierta ? '−' : '+'}</button><span class="nom-sep-fecha">${esc(nombreDia)} ${esc(nomFecha(fecha))}</span><small title="Cada diagnóstico o procedimiento de una atención es un registro HIS">${nomPlural(citasDia, 'atención', 'atenciones')} · ${nomPlural(enDia, 'registro', 'registros')}</small></span></td></tr>`;
+      separador = `<tr class="nom-sep${abierta ? '' : ' plegada'}" data-sep="${esc(fecha)}"><td colspan="${nomColumnas().length + 1}"><span class="nom-sep-in"><button type="button" class="nom-toggle" data-nom-toggle="${esc(fecha)}" aria-expanded="${abierta}" title="${abierta ? 'Contraer' : 'Expandir'} los registros de este día">${abierta ? '−' : '+'}</button><span class="nom-sep-fecha">${esc(nombreDia)} ${esc(nomFecha(fecha))}</span><small title="Cada diagnóstico o procedimiento de una atención es un registro HIS">${nomPlural(citasDia, 'atención', 'atenciones')} · ${nomPlural(enDia, 'registro', 'registros')}</small></span></td></tr>`;
     }
-    return `${separador}<tr data-f="${esc(fecha)}"${NOM.abiertas.has(fecha) ? '' : ' hidden'}>${NOM_COLUMNAS.map(([, clase, celda]) => `<td class="${clase}">${celda(r, i)}</td>`).join('')}<td class="nom-c-acc"><button type="button" class="btn btn-secondary btn-xs" data-nom-ver="${i}">Ver</button></td></tr>`;
+    return `${separador}<tr data-f="${esc(fecha)}"${NOM.abiertas.has(fecha) ? '' : ' hidden'}>${nomColumnas().map(([, clase, celda]) => `<td class="${clase}">${celda(r, i)}</td>`).join('')}<td class="nom-c-acc"><button type="button" class="btn btn-secondary btn-xs" data-nom-ver="${i}">Ver</button></td></tr>`;
   }).join('');
   const boton = (p, texto, deshabilitado) => `<button type="button" class="btn btn-secondary btn-sm" data-nom-pagina="${p}"${deshabilitado ? ' disabled' : ''}>${texto}</button>`;
   return `
@@ -677,7 +768,7 @@ function htmlResultadoNominal(datos) {
     </div>
     <div class="nom-table-wrap">
       <table class="nom-table">
-        <thead><tr>${NOM_COLUMNAS.map(([titulo, clase]) => `<th class="${clase.includes('sticky') ? clase : ''}">${esc(titulo)}</th>`).join('')}<th><span class="sr-only">Detalle</span></th></tr></thead>
+        <thead><tr>${nomColumnas().map(([titulo, clase]) => `<th class="${clase.includes('sticky') ? clase : ''}">${esc(titulo)}</th>`).join('')}<th><span class="sr-only">Detalle</span></th></tr></thead>
         <tbody>${cuerpo}</tbody>
       </table>
     </div>
@@ -719,6 +810,7 @@ exportadores.nominal = async (formato, boton) => {
   const deAtenciones = st.tipo === 'atenciones';
   if (![...params.keys()].length) { toast('Elige al menos un filtro antes de exportar.', 'info'); return; }
   params.set('exportar', '1');
+  params.set('vista', st.tipo);
   const texto = boton.innerHTML;
   boton.disabled = true;
   boton.textContent = 'Preparando…';

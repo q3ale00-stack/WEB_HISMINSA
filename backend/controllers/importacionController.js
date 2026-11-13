@@ -1,4 +1,4 @@
-// Importación de maestros y producción nominal HIS desde archivos CSV.
+// Importación de maestros y producción nominal HIS desde archivos CSV o Excel (.xlsx).
 // Reproduce el script de la Unidad de Estadística (carga_de_datos) sin BULK INSERT ni xp_cmdshell:
 // el navegador sube los archivos al servidor Node y este los inserta en SQL Server por la conexión de la aplicación.
 const fs = require('fs');
@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Transform } = require('stream');
 const { pipeline } = require('stream/promises');
+const ExcelJS = require('exceljs');
 const { sql, poolPromise } = require('../config/db');
 // Al terminar una importación se vacía la caché de reportes para que muestren los datos nuevos.
 const cache = require('../config/cache');
@@ -86,9 +87,13 @@ const cleanupExpiredUploads = async () => {
 // Recibe un archivo como cuerpo binario (application/octet-stream) y lo guarda en la carpeta temporal.
 const uploadFile = async (req, res) => {
   const name = path.basename(typeof req.query.nombre === 'string' ? req.query.nombre : '').slice(0, 200);
-  if (!/\.(csv|txt)$/i.test(name)) {
-    return res.status(400).json({ message: 'Solo se aceptan archivos .csv o .txt.' });
+  if (/\.xls$/i.test(name)) {
+    return res.status(400).json({ message: 'El formato .xls (Excel 97-2003) no es compatible. Ábrelo en Excel y guárdalo como .xlsx.' });
   }
+  if (!/\.(csv|txt|xlsx)$/i.test(name)) {
+    return res.status(400).json({ message: 'Solo se aceptan archivos .csv, .txt o .xlsx.' });
+  }
+  const formato = /\.xlsx$/i.test(name) ? 'xlsx' : 'csv';
   const declaredSize = Number(req.headers['content-length']);
   if (Number.isFinite(declaredSize) && declaredSize > MAX_FILE_BYTES) {
     return res.status(413).json({ message: `El archivo supera el máximo permitido de ${Math.round(MAX_FILE_BYTES / 1048576)} MB.` });
@@ -98,7 +103,7 @@ const uploadFile = async (req, res) => {
   await cleanupExpiredUploads();
 
   const id = crypto.randomUUID();
-  const filePath = path.join(UPLOAD_DIR, `${id}.csv`);
+  const filePath = path.join(UPLOAD_DIR, `${id}.${formato}`);
   let size = 0;
   const limiter = new Transform({
     transform(chunk, encoding, callback) {
@@ -126,7 +131,13 @@ const uploadFile = async (req, res) => {
     return res.status(400).json({ message: `El archivo ${name} está vacío.` });
   }
 
-  uploads.set(id, { id, name, path: filePath, size, userId: req.user.id, createdAt: Date.now(), inUse: false });
+  // Un .xlsx es un ZIP: si no empieza con «PK» no es un Excel válido (por ejemplo, un CSV renombrado).
+  if (formato === 'xlsx' && !(await esZip(filePath))) {
+    await fsp.rm(filePath, { force: true }).catch(() => {});
+    return res.status(400).json({ message: `${name} no es un archivo Excel válido. Ábrelo en Excel y guárdalo de nuevo como .xlsx.` });
+  }
+
+  uploads.set(id, { id, name, path: filePath, size, formato, userId: req.user.id, createdAt: Date.now(), inUse: false });
   res.status(201).json({ id, nombre: name, tamano: size });
 };
 
@@ -192,12 +203,102 @@ async function* readLines(filePath, encoding, onBytes) {
 
 // Separa los campos con coma, como FIELDTERMINATOR = ','. Igual que BULK INSERT, la última columna
 // conserva el resto de la línea si hay campos de más, y un campo vacío se guarda como NULL (o su valor por defecto).
-const splitFields = (text, columnCount) => {
-  const fields = text.split(',');
+const splitFields = (text, columnCount, separator = ',') => {
+  const fields = text.split(separator);
   if (fields.length > columnCount) {
-    fields.splice(columnCount - 1, fields.length - columnCount + 1, fields.slice(columnCount - 1).join(','));
+    fields.splice(columnCount - 1, fields.length - columnCount + 1, fields.slice(columnCount - 1).join(separator));
   }
   return fields.map(value => (value === '' ? null : value));
+};
+
+// ═══════════════════════════════════════
+//  LECTURA DE EXCEL (.xlsx)
+// ═══════════════════════════════════════
+// El Excel se pasa a un archivo de texto temporal y luego sigue el mismo camino que un CSV.
+// Separa los campos con el carácter de control US (\u001f) en lugar de la coma, para que las
+// comas dentro de una celda (nombres, direcciones) no corran las columnas.
+const SEPARADOR_EXCEL = '\u001f';
+
+const esZip = async filePath => {
+  const handle = await fsp.open(filePath, 'r');
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(4), 0, 4, 0);
+    return bytesRead === 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+  } finally {
+    await handle.close();
+  }
+};
+
+const dos = n => String(n).padStart(2, '0');
+// Excel guarda las fechas sin zona horaria; ExcelJS las entrega como fecha UTC con la misma hora del archivo.
+const fechaExcel = date => {
+  if (Number.isNaN(date.getTime())) return '';
+  const dia = `${date.getUTCFullYear()}-${dos(date.getUTCMonth() + 1)}-${dos(date.getUTCDate())}`;
+  const h = date.getUTCHours(), m = date.getUTCMinutes(), s = date.getUTCSeconds();
+  return h || m || s ? `${dia} ${dos(h)}:${dos(m)}:${dos(s)}` : dia;
+};
+// Números sin notación científica ni separador de miles (por ejemplo 0.0000012 o 1e21).
+const numeroExcel = value => {
+  const text = String(value);
+  return /e/i.test(text) ? value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 }) : text;
+};
+// Convierte una celda de ExcelJS en el texto que tendría en un CSV.
+const textoCelda = value => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return fechaExcel(value);
+  if (typeof value === 'number') return numeroExcel(value);
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  if (typeof value === 'object') {
+    if (Array.isArray(value.richText)) return value.richText.map(part => part.text || '').join('');
+    if ('result' in value) return textoCelda(value.result);          // fórmula: se usa su resultado
+    if ('text' in value) return textoCelda(value.text);              // hipervínculo
+    if ('error' in value) return '';                                 // #N/A, #DIV/0!...
+    return '';
+  }
+  // Un salto de línea dentro de la celda partiría la fila en dos.
+  return String(value).replace(/[\r\n]+/g, ' ').replace(/\u001f/g, ' ');
+};
+
+// Lee la PRIMERA hoja por partes (sin cargar todo el libro en memoria) y escribe una línea por fila.
+// Las filas vacías se dejan como líneas vacías para que los mensajes de error usen el número de fila de Excel.
+const convertirExcel = async ({ upload, destino, onBytes = () => {} }) => {
+  const entrada = fs.createReadStream(upload.path, { highWaterMark: 1024 * 1024 });
+  entrada.on('data', chunk => onBytes(chunk.length));
+  const salida = fs.createWriteStream(destino, { encoding: 'utf8' });
+  const escribir = text => (salida.write(text) ? null : new Promise(resolve => salida.once('drain', resolve)));
+  const reader = new ExcelJS.stream.xlsx.WorkbookReader(entrada, {
+    sharedStrings: 'cache', styles: 'cache', hyperlinks: 'ignore', worksheets: 'emit', entries: 'emit'
+  });
+  let columnas = 0;
+  let filaAnterior = 0;
+  let hojas = 0;
+  try {
+    for await (const hoja of reader) {
+      hojas += 1;
+      for await (const fila of hoja) {
+        const valores = Array.isArray(fila.values) ? fila.values : [];
+        // El encabezado (fila 1) fija cuántas columnas tiene el archivo.
+        if (!columnas) columnas = Math.max(fila.cellCount || 0, valores.length - 1);
+        const espera = escribir('\n'.repeat(Math.max(0, fila.number - filaAnterior - 1)));
+        if (espera) await espera;
+        filaAnterior = fila.number;
+        const campos = [];
+        for (let c = 1; c <= columnas; c += 1) campos.push(textoCelda(valores[c]));
+        const linea = campos.some(campo => campo !== '') ? campos.join(SEPARADOR_EXCEL) : '';
+        const espera2 = escribir(`${linea}\n`);
+        if (espera2) await espera2;
+      }
+      break; // solo la primera hoja
+    }
+  } catch (error) {
+    salida.destroy();
+    throw new ImportError(`${upload.name}: no se pudo leer el Excel (${error.message}). Ábrelo en Excel y guárdalo de nuevo como .xlsx.`);
+  } finally {
+    entrada.destroy();
+  }
+  await new Promise((resolve, reject) => salida.end(error => (error ? reject(error) : resolve())));
+  if (!hojas || !filaAnterior) throw new ImportError(`${upload.name}: la primera hoja del Excel está vacía.`);
+  return { filas: filaAnterior };
 };
 
 // ═══════════════════════════════════════
@@ -310,9 +411,24 @@ const describeProblem = (problem, fileName) => {
 //  CARGA DE UN ARCHIVO
 // ═══════════════════════════════════════
 // Lee el CSV (omitiendo el encabezado, FIRSTROW = 2) y lo inserta por lotes en la tabla destino.
-const loadFile = async ({ transaction, job, upload, fileColumns, insertColumns, target, includeLine = false, tablock = false, encodingOption, yearCheck = null }) => {
-  const encoding = await detectEncoding(upload.path, encodingOption);
-  log(job, `Cargando: ${upload.name} (${encoding === 'utf-8' ? 'UTF-8' : 'ANSI'})`);
+const loadFile = async (options) => {
+  const { job, upload } = options;
+  if (upload.formato !== 'xlsx') return loadTextFile({ ...options, lectura: { path: upload.path, separator: ',', countBytes: true } });
+  // Excel: primero se pasa a texto (el avance se cuenta con los bytes del .xlsx) y luego se carga igual que un CSV.
+  const destino = `${upload.path}.txt`;
+  log(job, `Leyendo Excel: ${upload.name} (primera hoja)`);
+  try {
+    const { filas } = await convertirExcel({ upload, destino, onBytes: bytes => { job.bytesProcesados += bytes; } });
+    log(job, `${upload.name}: ${filas.toLocaleString('es-PE')} filas en la hoja, incluido el encabezado.`);
+    return await loadTextFile({ ...options, encodingOption: 'utf8', lectura: { path: destino, separator: SEPARADOR_EXCEL, countBytes: false } });
+  } finally {
+    await fsp.rm(destino, { force: true }).catch(() => {});
+  }
+};
+
+const loadTextFile = async ({ transaction, job, upload, fileColumns, insertColumns, target, includeLine = false, tablock = false, encodingOption, yearCheck = null, lectura }) => {
+  const encoding = await detectEncoding(lectura.path, encodingOption);
+  log(job, `Cargando: ${upload.name} (${upload.formato === 'xlsx' ? 'Excel' : encoding === 'utf-8' ? 'UTF-8' : 'ANSI'})`);
 
   const targetColumns = insertColumns.map(column => quoteName(column.name));
   const sourceValues = insertColumns.map(column => valueExpression(column));
@@ -391,7 +507,7 @@ const loadFile = async ({ transaction, job, upload, fileColumns, insertColumns, 
         .query(`SELECT TOP 1 linea_archivo, ${src} AS valor_anio FROM #carga WHERE TRY_CONVERT(int, ${src}) IS NULL OR TRY_CONVERT(int, ${src}) <> @anio ORDER BY linea_archivo;`);
       const row = other.recordset[0];
       if (row) {
-        throw new ImportError(`${upload.name}, línea ${row.linea_archivo.toLocaleString('es-PE')}: el registro es del año «${row.valor_anio ?? 'vacío'}» y el modo «Reemplazar ${yearCheck.year}» solo admite registros de ${yearCheck.year}. Se canceló la importación de la producción nominal y no se modificó.`);
+        throw new ImportError(`${lugar(row.linea_archivo)}: el registro es del año «${row.valor_anio ?? 'vacío'}» y el modo «Reemplazar ${yearCheck.year}» solo admite registros de ${yearCheck.year}. Se canceló la importación de la producción nominal y no se modificó.`);
       }
     }
 
@@ -411,11 +527,12 @@ const loadFile = async ({ transaction, job, upload, fileColumns, insertColumns, 
     }
   };
 
-  for await (const { lineNumber, text } of readLines(upload.path, encoding, bytes => { job.bytesProcesados += bytes; })) {
+  const lugar = n => `${upload.name}, ${upload.formato === 'xlsx' ? 'fila' : 'línea'} ${n.toLocaleString('es-PE')}`;
+  for await (const { lineNumber, text } of readLines(lectura.path, encoding, bytes => { if (lectura.countBytes) job.bytesProcesados += bytes; })) {
     if (lineNumber === 1 || text.trim() === '') continue;
-    const fields = splitFields(text, fileColumns.length);
+    const fields = splitFields(text, fileColumns.length, lectura.separator);
     if (fields.length < fileColumns.length) {
-      throw new ImportError(`${upload.name}, línea ${lineNumber.toLocaleString('es-PE')}: tiene ${fields.length} campos y la tabla espera ${fileColumns.length}. Revisa que el archivo corresponda a esta tabla.`);
+      throw new ImportError(`${lugar(lineNumber)}: tiene ${fields.length} ${upload.formato === 'xlsx' ? 'columnas' : 'campos'} y la tabla espera ${fileColumns.length}. Revisa que el archivo corresponda a esta tabla.`);
     }
     batch.push([lineNumber, ...fields]);
     if (batch.length >= BATCH_ROWS) await flush();
@@ -911,5 +1028,5 @@ module.exports = {
   getStatus,
   getSummary,
   // Exportadas para pruebas.
-  _internal: { splitFields, readLines, detectEncoding, valueExpression, typeSpec }
+  _internal: { splitFields, readLines, detectEncoding, valueExpression, typeSpec, convertirExcel, textoCelda, esZip, SEPARADOR_EXCEL }
 };

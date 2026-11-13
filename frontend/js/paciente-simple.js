@@ -15,7 +15,9 @@ const PS = {
   seq: 0,
   sugSeq: 0,
   sugTimer: null,
-  sugerencias: []
+  sugerencias: [],
+  buscando: false,        // hay una búsqueda en pantalla (la lista «Mis pacientes» se oculta)
+  mis: { usuario: null, filas: [], total: null, pagina: 0, cargando: false, error: '' }
 };
 
 const PS_RECIENTES_CLAVE = 'his_pac_recientes';
@@ -71,11 +73,12 @@ function iniciarPacienteSimple() {
   const box = document.getElementById('pacPanelSimple');
   if (PS.iniciado || !box) return;
   PS.iniciado = true;
+  const etiqueta = esModoMedico() ? 'Busca entre tus pacientes: DNI, nombre o historia clínica' : 'DNI, nombre o historia clínica del paciente';
   box.innerHTML = `
     <div class="ps-hero">
       <form class="ps-search" id="psForm" role="search" autocomplete="off">
         <svg class="ps-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="psInput" type="search" placeholder="DNI, nombre o historia clínica del paciente" aria-label="DNI, nombre o historia clínica del paciente"
+        <input id="psInput" type="search" placeholder="${etiqueta}" aria-label="${etiqueta}"
           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="psSug" enterkeyhint="search">
         <button type="submit" class="btn btn-primary ps-search-btn">Buscar</button>
         <button type="button" class="btn btn-secondary ps-search-btn ps-limpiar-btn" data-ps-limpiar title="Borrar lo escrito y el resultado">Limpiar</button>
@@ -83,14 +86,70 @@ function iniciarPacienteSimple() {
       </form>
     </div>
     <div id="psRecientes"></div>
-    <div id="psResultado" aria-live="polite"></div>`;
+    <div id="psResultado" aria-live="polite"></div>
+    <div id="psMisPacientes"></div>`;
   psActivarBuscador();
   psRenderRecientes();
+}
+
+// ── «Mis pacientes»: lista de los pacientes que atendió el médico, sin necesidad de buscar ──
+async function psCargarMisPacientes({ siguiente = false } = {}) {
+  const mis = PS.mis;
+  if (mis.usuario !== currentUser?.id) Object.assign(mis, { usuario: currentUser?.id, filas: [], total: null, pagina: 0, error: '' });
+  if (mis.cargando || (!siguiente && mis.total !== null)) { psRenderMisPacientes(); return; }
+  mis.cargando = true;
+  mis.error = '';
+  psRenderMisPacientes();
+  try {
+    const datos = await apiFetch(`/busqueda/mis-pacientes?pagina=${mis.pagina + 1}&tam=${PS_LISTA_PASO}`);
+    mis.filas.push(...datos.filas);
+    mis.total = datos.total;
+    mis.pagina += 1;
+    mis.sinPersonal = Boolean(datos.sinPersonal);
+  } catch (error) {
+    mis.error = error.message || 'No se pudo cargar la lista de tus pacientes.';
+  } finally {
+    mis.cargando = false;
+    psRenderMisPacientes();
+  }
+}
+
+function psRenderMisPacientes() {
+  const box = document.getElementById('psMisPacientes');
+  if (!box) return;
+  box.hidden = !esModoMedico() || Boolean(PS.paciente) || PS.buscando;
+  if (box.hidden) return;
+  const { filas, total, cargando, error, sinPersonal } = PS.mis;
+  if (sinPersonal) {
+    box.innerHTML = '<div class="ps-vacio"><h3>Tu cuenta no está ligada a un profesional del HIS</h3><p>Pide a un administrador que la vincule a tu registro de personal para ver a tus pacientes.</p></div>';
+    return;
+  }
+  if (!filas.length) {
+    box.innerHTML = error
+      ? `<div class="ps-vacio"><h3>No se pudo cargar la lista</h3><p>${esc(error)}</p></div>`
+      : total === 0 ? '<div class="ps-vacio"><h3>Todavía no tienes pacientes atendidos en el HIS</h3></div>'
+        : '<div class="ps-estado"><span class="ps-spinner" aria-hidden="true"></span>Cargando tus pacientes…</div>';
+    return;
+  }
+  const quedan = total - filas.length;
+  box.innerHTML = `<section class="ps-lista ps-mis-pacientes" aria-label="Mis pacientes">
+      <h3>Tus pacientes · ${formatNumber(total)} en total</h3>
+      <p class="ps-tip">Del más reciente al más antiguo según tu última atención. Usa el buscador de arriba para encontrar a uno en concreto.</p>
+      <ul>${filas.map((p, i) => `<li><button type="button" class="ps-lista-item" data-ps-mio="${i}">${psItemPaciente(p, { mia: true })}<span class="ps-chevron" aria-hidden="true">›</span></button></li>`).join('')}</ul>
+      ${quedan > 0 ? `<button type="button" class="btn btn-secondary ps-ver-mas" data-ps-mis-mas${cargando ? ' disabled' : ''}>${cargando ? 'Cargando…' : `Ver ${formatNumber(Math.min(PS_LISTA_PASO, quedan))} más`}</button>` : ''}
+      ${error ? `<p class="ps-tip">${esc(error)}</p>` : ''}
+    </section>`;
+  box.querySelectorAll('[data-ps-mio]').forEach(b => b.addEventListener('click', () => abrirPacienteSimple(PS.mis.filas[Number(b.dataset.psMio)])));
+  box.querySelector('[data-ps-mis-mas]')?.addEventListener('click', () => psCargarMisPacientes({ siguiente: true }));
 }
 
 function psRenderRecientes() {
   const box = document.getElementById('psRecientes');
   if (!box) return;
+  // En «Mis pacientes» la lista propia reemplaza a la de recientes.
+  if (esModoMedico()) { box.innerHTML = ''; psCargarMisPacientes(); return; }
+  const misBox = document.getElementById('psMisPacientes');
+  if (misBox) misBox.hidden = true;
   const lista = psLeerRecientes();
   if (!lista.length || PS.paciente) { box.innerHTML = ''; return; }
   box.innerHTML = `<section class="ps-recientes" aria-label="Pacientes recientes">
@@ -159,12 +218,14 @@ function psCerrarSugerencias() {
   document.getElementById('psInput')?.setAttribute('aria-expanded', 'false');
 }
 
-function psItemPaciente(p) {
+// mia: en «Mis pacientes» la fecha y el número de citas son los del médico con ese paciente.
+function psItemPaciente(p, { mia = false } = {}) {
   const datos = [p.Documento ? `DNI ${p.Documento}` : '', psEdad(p.FechaNacimiento), psSexo(p.Sexo), p.Historia_Clinica ? `H.C. ${p.Historia_Clinica}` : ''].filter(Boolean);
   const ultima = histFechaTexto(p.UltimaAtencion);
+  const etiqueta = mia ? `Tu última atención${p.Atenciones > 1 ? ` · ${formatNumber(p.Atenciones)} citas` : ''}` : 'Última atención';
   return `<span class="ps-mini-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
     <span class="ps-item-text"><strong>${esc(p.Paciente || 'Sin nombre')}</strong><small>${esc(datos.join(' · '))}</small></span>
-    <span class="ps-item-ultima">${ultima ? `Última atención<br><b>${esc(ultima)}</b>` : '<em>Sin atenciones</em>'}</span>`;
+    <span class="ps-item-ultima">${ultima ? `${esc(etiqueta)}<br><b>${esc(ultima)}</b>` : '<em>Sin atenciones</em>'}</span>`;
 }
 
 async function psCargarSugerencias(texto) {
@@ -210,6 +271,7 @@ async function buscarPacienteSimple(texto, { limite = PS_LISTA_PASO } = {}) {
   psCerrarSugerencias();
   const seq = ++PS.seq;
   PS.paciente = null;
+  PS.buscando = true;
   document.getElementById('pacPanelSimple')?.classList.remove('ps-con-paciente');
   psRenderRecientes();
   const res = document.getElementById('psResultado');
@@ -225,8 +287,8 @@ async function buscarPacienteSimple(texto, { limite = PS_LISTA_PASO } = {}) {
     PS.sugerencias = filas;
     if (filas.length === 1) { abrirPacienteSimple(filas[0]); return; }
     if (!filas.length) {
-      res.innerHTML = `<div class="ps-vacio"><h3>No encontramos a ningún paciente con «${esc(valor)}»</h3>
-        <ul><li>Revisa que el DNI tenga todos sus números.</li><li>Prueba solo con el apellido y el primer nombre.</li><li>Si tienes el número de historia clínica, búscalo con él.</li></ul></div>`;
+      res.innerHTML = `<div class="ps-vacio"><h3>No encontramos a ningún paciente${esModoMedico() ? ' tuyo' : ''} con «${esc(valor)}»</h3>
+        <ul>${esModoMedico() ? '<li>Solo aparecen los pacientes que has atendido.</li>' : ''}<li>Revisa que el DNI tenga todos sus números.</li><li>Prueba solo con el apellido y el primer nombre.</li><li>Si tienes el número de historia clínica, búscalo con él.</li></ul></div>`;
       return;
     }
     const puedeVerMas = hayMas && limite < PS_LISTA_MAX;
@@ -261,6 +323,7 @@ async function abrirPacienteSimplePorId(id) {
 function psCerrarPaciente() {
   PS.seq += 1;
   PS.paciente = null;
+  PS.buscando = false;
   document.getElementById('pacPanelSimple')?.classList.remove('ps-con-paciente');
   const res = document.getElementById('psResultado');
   if (res) res.innerHTML = '';
@@ -429,3 +492,61 @@ function psRenderHistorial() {
   histPintar(timeline, filas, { contexto: 'paciente', establecimiento: p.Establecimiento, resumenEn: resumen, frecuentesEn: frecuentes }, aviso);
 }
 
+
+// ── Ficha resumida automática ──
+// Cuando una búsqueda (avanzada o «Mis atenciones») corresponde a una sola persona, se muestran sus datos encima
+// de los resultados sin que haya que abrir la ficha. Los datos se piden una vez por paciente.
+const PS_MINI = new Map();
+
+async function psDatosPaciente(id) {
+  const clave = String(id);
+  if (!PS_MINI.has(clave)) {
+    PS_MINI.set(clave, apiFetch(`/busqueda/pacientes/sugerencias?id=${encodeURIComponent(clave)}`)
+      .then(filas => filas[0] || null)
+      .catch(error => { PS_MINI.delete(clave); throw error; }));
+  }
+  return PS_MINI.get(clave);
+}
+
+function psMiniFichaHtml(p) {
+  const dato = (titulo, valor) => (valor ? `<div><dt>${esc(titulo)}</dt><dd>${esc(valor)}</dd></div>` : '');
+  const ultima = histFechaTexto(p.UltimaAtencion);
+  return `<article class="pac-mini-ficha" aria-label="Datos del paciente">
+      <span class="ps-avatar" aria-hidden="true">${esc(histIniciales(p.Paciente))}</span>
+      <div class="pac-mini-cuerpo">
+        <h3>${esc(p.Paciente || 'Paciente sin nombre')}</h3>
+        <dl>
+          ${dato('DNI', p.Documento)}${dato('Edad', psEdad(p.FechaNacimiento))}${dato('Sexo', psSexo(p.Sexo))}
+          ${dato('Historia clínica', p.Historia_Clinica)}${dato('Establecimiento', p.Establecimiento ? histCasoNombre(p.Establecimiento) : '')}
+          ${dato('Última atención', ultima)}${dato('Atenciones', p.Atenciones ? formatNumber(p.Atenciones) : '')}
+          ${dato('Domicilio', p.Domicilio_Declarado || p.Domicilio_Reniec)}
+        </dl>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" data-mini-abrir="${esc(p.Id_Paciente)}">Ver historia completa</button>
+    </article>`;
+}
+
+// Pinta la ficha del paciente «id» en «caja» (o la vacía si no hay id). Ignora respuestas que llegan tarde.
+async function psMostrarMiniFicha(caja, id) {
+  if (!caja) return;
+  const turno = String(Date.now() + Math.random());
+  caja.dataset.turno = turno;
+  if (!id) { caja.innerHTML = ''; return; }
+  try {
+    const p = await psDatosPaciente(id);
+    if (caja.dataset.turno !== turno) return;
+    caja.innerHTML = p ? psMiniFichaHtml(p) : '';
+    caja.querySelector('[data-mini-abrir]')?.addEventListener('click', event => {
+      showView('pacientes');
+      abrirPacienteSimplePorId(event.currentTarget.dataset.miniAbrir);
+    });
+  } catch (_) {
+    if (caja.dataset.turno === turno) caja.innerHTML = '';
+  }
+}
+
+// Id del único paciente de unas filas, o '' si hay varios o ninguno.
+function psPacienteUnico(filas) {
+  const ids = new Set((filas || []).map(r => String(r.Id_Paciente ?? '').trim()).filter(Boolean));
+  return ids.size === 1 ? [...ids][0] : '';
+}

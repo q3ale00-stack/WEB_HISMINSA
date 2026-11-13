@@ -26,6 +26,15 @@
             <option value="">Escribe para buscar y selecciona un médico</option>
           </select>
         </div>
+        <div class="field" id="newUserAccessField">
+          <label class="label" for="newUserAccess">Acceso del médico <span class="required">*</span></label>
+          <select class="select-native" id="newUserAccess" name="access" required aria-describedby="newUserAccessHelp">
+            <option value="" selected disabled>Elige el nivel de acceso</option>
+            <option value="restringido">Solo sus pacientes y atenciones (recomendado)</option>
+            <option value="completo">Completo: todo menos la administración (jefes de servicio)</option>
+          </select>
+          <small class="card-subtitle" id="newUserAccessHelp">«Solo sus pacientes»: ve sus propias atenciones y la historia completa de los pacientes que ha atendido; sin Consultas, Defunciones ni búsquedas avanzadas.</small>
+        </div>
         <div class="field">
           <label class="label" for="newUserUsername">Usuario <span class="required">*</span></label>
           <input class="input" id="newUserUsername" name="username" minlength="3" maxlength="100" autocomplete="off" required>

@@ -1,5 +1,6 @@
     // Controlador analítico: valida opciones de consulta, construye SQL parametrizado y ofrece resúmenes agregados.
     const { sql, poolPromise, withTransientRetry } = require('../config/db');
+    const alcance = require('./alcance');
 
     // Lista blanca de campos consultables; cada campo declara su etiqueta, tipo y expresión SQL fija.
     const FIELD_DEFS = {
@@ -640,7 +641,9 @@
     const cache = require('../config/cache');
     const getDashboardResumen = async (req, res) => {
       try {
-        const cached = cache.get('dashboard_resumen');
+        // Un médico restringido ve sus propias cifras: caché y consultas aparte (ver alcance.js).
+        const claveDashboard = alcance.claveCache(req, 'dashboard_resumen');
+        const cached = cache.get(claveDashboard);
         if (cached) {
           return res.status(200).json(cached);
         }
@@ -681,13 +684,16 @@
           ORDER BY YEAR(np.Fecha_Atencion) DESC, MONTH(np.Fecha_Atencion) DESC;
         `;
 
-        const result = await withTransientRetry(() => pool.request().query(query));
+        const result = await withTransientRetry(() => {
+          const request = pool.request();
+          return request.query(alcance.soloMisAtenciones(req, request, query));
+        });
         const payload = {
           resumen: result.recordsets[0][0] || {},
           establecimientos: result.recordsets[1] || [],
           evolucion: result.recordsets[2] || []
         };
-        cache.set('dashboard_resumen', payload, 180);
+        cache.set(claveDashboard, payload, 180);
         res.status(200).json(payload);
       } catch (error) {
         // Conserva una respuesta compacta para el cliente y distingue indisponibilidad temporal de fallo interno.
@@ -880,7 +886,7 @@
           ORDER BY np.Fecha_Atencion DESC, np.Num_Reg DESC;
         `;
 
-        const result = await withTransientRetry(() => request.query(query));
+        const result = await withTransientRetry(() => request.query(alcance.soloMisAtenciones(req, request, query)));
         res.status(200).json({
           info: result.recordsets[0][0] || { codigo, descripcion: 'Sin descripción en catálogo' },
           resumen: result.recordsets[1][0] || {},

@@ -49,7 +49,7 @@ function renderizarOpcionesSelectorIndicador(lista = catalogoIndicadores) {
   if (!select) return;
 
   const placeholderText = lista.length === catalogoIndicadores.length
-    ? '— Seleccione un indicador (01 a 24) —'
+    ? '— Seleccione un indicador —'
     : `— ${lista.length} indicadores encontrados —`;
 
   const opciones = [
@@ -407,7 +407,7 @@ function cambiarSeriePuntos(serie) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-//  DIAGRAMA 1: BARRAS ACUMULATIVAS O MENSUALES (DUAL / APILADO)
+//  DIAGRAMA 1: BARRAS AGRUPADAS / DOBLES (TRATAMIENTO OPORTUNO VS PENDIENTE)
 // ═════════════════════════════════════════════════════════════════════
 function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambos') {
   const container = document.getElementById('indBarrasAcumuladasCanvas');
@@ -419,8 +419,8 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
   }
 
   // Dimensiones SVG
-  const width = 940;
-  const height = 260;
+  const width = 960;
+  const height = 270;
   const margin = { top: 38, right: 28, bottom: 44, left: 52 };
   const chartW = width - margin.left - margin.right;
   const chartH = height - margin.top - margin.bottom;
@@ -429,7 +429,11 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
   let maxVal = 5;
   if (modo === 'acumulado') {
     if (serie === 'ambos') {
-      maxVal = Math.max(...mensual.map(m => Number(m.acumuladoTotal ?? m.acumuladoDenominador) || ((Number(m.acumuladoSiCumplen ?? m.acumuladoCumplen) || 0) + (Number(m.acumuladoNoContinuaron ?? m.noCumplen) || 0))), 5);
+      maxVal = Math.max(...mensual.map(m => {
+        const c = Number(m.acumuladoSiCumplen ?? m.acumuladoCumplen) || 0;
+        const nc = Number(m.acumuladoNoContinuaron ?? m.noCumplen) || 0;
+        return Math.max(c, nc);
+      }), 5);
     } else if (serie === 'cumplen') {
       maxVal = Math.max(...mensual.map(m => Number(m.acumuladoSiCumplen ?? m.acumuladoCumplen) || 0), 5);
     } else {
@@ -437,18 +441,21 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
     }
   } else {
     if (serie === 'ambos') {
-      maxVal = Math.max(...mensual.map(m => Math.max(Number(m.totalDiagnosticos ?? m.denominador) || 0, (Number(m.siCumplen ?? m.cumplen) || 0) + (Number(m.noContinuaron ?? m.noCumplen) || 0))), 5);
+      maxVal = Math.max(...mensual.map(m => {
+        const c = Number(m.siCumplen ?? m.cumplen) || 0;
+        const nc = Number(m.noContinuaron ?? m.noCumplen) || 0;
+        return Math.max(c, nc);
+      }), 5);
     } else if (serie === 'cumplen') {
       maxVal = Math.max(...mensual.map(m => Number(m.siCumplen ?? m.cumplen) || 0), 5);
     } else {
       maxVal = Math.max(...mensual.map(m => Number(m.noContinuaron ?? m.noCumplen) || 0), 5);
     }
   }
-  const yMax = Math.ceil(maxVal * 1.18);
+  const yMax = Math.ceil(maxVal * 1.22); // Espacio superior para etiquetas numéricas
 
   const n = mensual.length; // 12 meses
   const slotW = chartW / n;
-  const barW = Math.max(slotW * 0.60, 22);
 
   // Líneas de grilla horizontales
   const gridTicks = [0, Math.round(yMax * 0.33), Math.round(yMax * 0.66), yMax];
@@ -461,11 +468,16 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
     `;
   });
 
+  // Anchos y separaciones de barras
+  const gap = 3; // Distancia entre las 2 barras dobles
+  const barWDouble = Math.max(Math.min((slotW - 14 - gap) / 2, 22), 12);
+  const groupW = 2 * barWDouble + gap;
+  const barWSingle = Math.max(slotW * 0.48, 20);
+
   // Renderizar Barras
   let barsSvg = '';
   mensual.forEach((m, idx) => {
     const cx = margin.left + idx * slotW + slotW / 2;
-    const x = cx - barW / 2;
     const nombreCorto = m.nombreMes.substring(0, 3).toUpperCase();
     const baseY = margin.top + chartH;
 
@@ -487,81 +499,86 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
     let barGroupContent = '';
 
     if (serie === 'ambos') {
-      // Barra apilada: Verde (Sí Cumplen) en la base + Ámbar (No Continuaron) arriba
-      const hCumplen = (vCumplen / yMax) * chartH;
-      const hNoCumplen = (vNoCumplen / yMax) * chartH;
-      const hTotal = ((vCumplen + vNoCumplen) / yMax) * chartH;
-      const topY = baseY - hTotal;
+      // 2 Barras visibles lado a lado:
+      // Barra 1: Verde (Tratamiento Oportuno ≤ 37 d)
+      // Barra 2: Ámbar (Pendiente / Fuera de Plazo)
+      const groupStartX = cx - groupW / 2;
+      const x1 = groupStartX;
+      const x2 = groupStartX + barWDouble + gap;
+
+      const h1 = vCumplen > 0 ? Math.max((vCumplen / yMax) * chartH, 4) : 0;
+      const y1 = baseY - h1;
+
+      const h2 = vNoCumplen > 0 ? Math.max((vNoCumplen / yMax) * chartH, 4) : 0;
+      const y2 = baseY - h2;
 
       tooltip = modo === 'acumulado'
-        ? `${m.nombreMes} (Acumulado): Total Sumado = ${vTotal} | Sí Cumplen = ${vCumplen} | No Continuaron = ${vNoCumplen} (+${nuevoMes} en este mes)`
-        : `${m.nombreMes} (Mensual): Total = ${vTotal} | Sí Cumplen = ${vCumplen} | No Continuaron = ${vNoCumplen}`;
+        ? `${m.nombreMes} (Acumulado):\n• Tratamiento Oportuno (≤ 37 d): ${vCumplen}\n• Pendientes / Fuera de Plazo: ${vNoCumplen}\n• Total Acumulado: ${vTotal} (+${nuevoMes} nuevos en el mes)`
+        : `${m.nombreMes} (Mensual):\n• Tratamiento Oportuno (≤ 37 d): ${vCumplen}\n• Pendientes / Fuera de Plazo: ${vNoCumplen}\n• Total del Mes: ${vTotal}`;
 
-      // Porción Verde (Sí Cumplen)
+      // Barra 1: Tratamiento Oportuno (Verde)
       if (vCumplen > 0) {
-        const yGreen = baseY - hCumplen;
         barGroupContent += `
-          <rect x="${x}" y="${yGreen}" width="${barW}" height="${hCumplen}" class="ind-bar-rect green">
-            <animate attributeName="height" from="0" to="${hCumplen}" dur="0.35s" fill="freeze" />
-            <animate attributeName="y" from="${baseY}" to="${yGreen}" dur="0.35s" fill="freeze" />
+          <rect x="${x1}" y="${y1}" width="${barWDouble}" height="${h1}" rx="3" class="ind-bar-rect green">
+            <animate attributeName="height" from="0" to="${h1}" dur="0.32s" fill="freeze" />
+            <animate attributeName="y" from="${baseY}" to="${y1}" dur="0.32s" fill="freeze" />
           </rect>
+          <text x="${x1 + barWDouble / 2}" y="${y1 - 6}" class="ind-bar-val-text green">${vCumplen}</text>
         `;
       }
 
-      // Porción Ámbar (No Continuaron)
+      // Barra 2: Pendientes / Fuera de Plazo (Ámbar)
       if (vNoCumplen > 0) {
-        const yOrange = baseY - hTotal;
         barGroupContent += `
-          <rect x="${x}" y="${yOrange}" width="${barW}" height="${hNoCumplen}" class="ind-bar-rect amber">
-            <animate attributeName="height" from="0" to="${hNoCumplen}" dur="0.35s" fill="freeze" />
-            <animate attributeName="y" from="${baseY}" to="${yOrange}" dur="0.35s" fill="freeze" />
+          <rect x="${x2}" y="${y2}" width="${barWDouble}" height="${h2}" rx="3" class="ind-bar-rect amber">
+            <animate attributeName="height" from="0" to="${h2}" dur="0.32s" fill="freeze" />
+            <animate attributeName="y" from="${baseY}" to="${y2}" dur="0.32s" fill="freeze" />
           </rect>
+          <text x="${x2 + barWDouble / 2}" y="${y2 - 6}" class="ind-bar-val-text amber">${vNoCumplen}</text>
         `;
       }
 
-      // Total sumado encima de la barra
-      if (vTotal > 0) {
-        barGroupContent += `<text x="${cx}" y="${topY - 8}" class="ind-bar-val-text total">${vTotal}</text>`;
-      }
-
-      // Incremento mensual en modo acumulado
+      // En modo acumulado, si hubo nuevos diagnósticos ese mes, mostrar el incremento sobre la barra más alta
       if (modo === 'acumulado' && nuevoMes > 0) {
-        barGroupContent += `<text x="${cx}" y="${topY - 21}" class="ind-bar-sub-text">+${nuevoMes}</text>`;
+        const topY = Math.min(vCumplen > 0 ? y1 : baseY, vNoCumplen > 0 ? y2 : baseY);
+        barGroupContent += `<text x="${cx}" y="${topY - 18}" class="ind-bar-sub-text" title="+${nuevoMes} nuevos diagnósticos en ${m.nombreMes}">+${nuevoMes}</text>`;
       }
 
     } else if (serie === 'cumplen') {
-      // Solo Sí Cumplen (Verde)
-      const h = (vCumplen / yMax) * chartH;
+      // Solo Tratamiento Oportuno (Verde centrado)
+      const x = cx - barWSingle / 2;
+      const h = vCumplen > 0 ? Math.max((vCumplen / yMax) * chartH, 4) : 0;
       const y = baseY - h;
       tooltip = modo === 'acumulado'
-        ? `${m.nombreMes} (Acumulado): ${vCumplen} pacientes SÍ cumplieron el requisito`
-        : `${m.nombreMes}: ${vCumplen} pacientes SÍ cumplieron en el mes`;
+        ? `${m.nombreMes} (Acumulado): ${vCumplen} pacientes con Tratamiento Oportuno (≤ 37 d)`
+        : `${m.nombreMes}: ${vCumplen} pacientes con Tratamiento Oportuno en el mes`;
 
       if (vCumplen > 0) {
         barGroupContent += `
-          <rect x="${x}" y="${y}" width="${barW}" height="${h}" class="ind-bar-rect green">
-            <animate attributeName="height" from="0" to="${h}" dur="0.35s" fill="freeze" />
-            <animate attributeName="y" from="${baseY}" to="${y}" dur="0.35s" fill="freeze" />
+          <rect x="${x}" y="${y}" width="${barWSingle}" height="${h}" rx="4" class="ind-bar-rect green">
+            <animate attributeName="height" from="0" to="${h}" dur="0.32s" fill="freeze" />
+            <animate attributeName="y" from="${baseY}" to="${y}" dur="0.32s" fill="freeze" />
           </rect>
-          <text x="${cx}" y="${y - 8}" class="ind-bar-val-text green">${vCumplen}</text>
+          <text x="${cx}" y="${y - 7}" class="ind-bar-val-text green">${vCumplen}</text>
         `;
       }
 
     } else if (serie === 'nocumplen') {
-      // Solo No Continuaron (Ámbar)
-      const h = (vNoCumplen / yMax) * chartH;
+      // Solo Pendientes / Fuera de Plazo (Ámbar centrado)
+      const x = cx - barWSingle / 2;
+      const h = vNoCumplen > 0 ? Math.max((vNoCumplen / yMax) * chartH, 4) : 0;
       const y = baseY - h;
       tooltip = modo === 'acumulado'
-        ? `${m.nombreMes} (Acumulado): ${vNoCumplen} pacientes NO continuaron / pendientes`
-        : `${m.nombreMes}: ${vNoCumplen} pacientes NO continuaron en el mes`;
+        ? `${m.nombreMes} (Acumulado): ${vNoCumplen} pacientes pendientes o fuera de plazo`
+        : `${m.nombreMes}: ${vNoCumplen} pacientes pendientes o fuera de plazo en el mes`;
 
       if (vNoCumplen > 0) {
         barGroupContent += `
-          <rect x="${x}" y="${y}" width="${barW}" height="${h}" class="ind-bar-rect amber">
-            <animate attributeName="height" from="0" to="${h}" dur="0.35s" fill="freeze" />
-            <animate attributeName="y" from="${baseY}" to="${y}" dur="0.35s" fill="freeze" />
+          <rect x="${x}" y="${y}" width="${barWSingle}" height="${h}" rx="4" class="ind-bar-rect amber">
+            <animate attributeName="height" from="0" to="${h}" dur="0.32s" fill="freeze" />
+            <animate attributeName="y" from="${baseY}" to="${y}" dur="0.32s" fill="freeze" />
           </rect>
-          <text x="${cx}" y="${y - 8}" class="ind-bar-val-text amber">${vNoCumplen}</text>
+          <text x="${cx}" y="${y - 7}" class="ind-bar-val-text amber">${vNoCumplen}</text>
         `;
       }
     }
@@ -585,7 +602,7 @@ function renderizarGraficoBarras(mensual = [], modo = 'acumulado', serie = 'ambo
 }
 
 // ═════════════════════════════════════════════════════════════════════
-//  DIAGRAMA 2: PUNTOS / LÍNEAS (CÁNCER VS TRATADOS OPORTUNOS)
+//  DIAGRAMA 2: PUNTOS / LÍNEAS (CASOS DIAGNOSTICADOS VS TRATAMIENTO OPORTUNO)
 // ═════════════════════════════════════════════════════════════════════
 function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
   const container = document.getElementById('indPuntosTendenciaCanvas');
@@ -597,7 +614,7 @@ function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
   }
 
   // Dimensiones SVG
-  const width = 940;
+  const width = 960;
   const height = 240;
   const margin = { top: 34, right: 28, bottom: 40, left: 52 };
   const chartW = width - margin.left - margin.right;
@@ -628,7 +645,7 @@ function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
     `;
   });
 
-  // Coordenadas Serie 1: Pacientes con Cáncer / No continuaron (Azul)
+  // Coordenadas Serie 1: Casos Diagnosticados (Azul)
   const coordsCancer = mensual.map((m, idx) => {
     const cx = margin.left + idx * slotW + slotW / 2;
     const valTotal = Number(m.totalDiagnosticos ?? m.denominador) || 0;
@@ -637,7 +654,7 @@ function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
     return { x: cx, y: cy, val: valTotal, mes: m.nombreMes, noContinuaron: valNoC };
   });
 
-  // Coordenadas Serie 2: Sí Cumplen Requisito (Verde)
+  // Coordenadas Serie 2: Tratamiento Oportuno ≤ 37 d (Verde)
   const coordsCumplen = mensual.map((m, idx) => {
     const cx = margin.left + idx * slotW + slotW / 2;
     const valSi = Number(m.siCumplen ?? m.cumplen) || 0;
@@ -648,13 +665,13 @@ function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
   let pathsSvg = '';
   let pointsSvg = '';
 
-  // Serie 1: Diagnósticos de Cáncer / No continuaron (Azul)
+  // Serie 1: Casos Diagnosticados (Azul)
   if (serie === 'ambos' || serie === 'nocumplen') {
     const pathDCancer = coordsCancer.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     pathsSvg += `<path d="${pathDCancer}" class="ind-trend-line blue" />`;
 
     coordsCancer.forEach(pt => {
-      const tooltip = `${pt.mes}: ${pt.val} pacientes diagnosticados con cáncer (${pt.noContinuaron} no continuaron / pendientes)`;
+      const tooltip = `${pt.mes}: ${pt.val} pacientes con diagnóstico de cáncer prevalente (${pt.noContinuaron} pendientes o fuera de plazo)`;
       pointsSvg += `
         <g class="ind-point-group blue" tabindex="0">
           <title>${esc(tooltip)}</title>
@@ -665,13 +682,13 @@ function renderizarGraficoPuntos(mensual = [], serie = 'ambos') {
     });
   }
 
-  // Serie 2: Sí Cumplen Requisito (Verde)
+  // Serie 2: Tratamiento Oportuno (Verde)
   if (serie === 'ambos' || serie === 'cumplen') {
     const pathDCumplen = coordsCumplen.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
     pathsSvg += `<path d="${pathDCumplen}" class="ind-trend-line green" />`;
 
     coordsCumplen.forEach(pt => {
-      const tooltip = `${pt.mes}: ${pt.val} pacientes con tratamiento oportuno ≤ 37 d (${pt.pct}% cumplimiento)`;
+      const tooltip = `${pt.mes}: ${pt.val} pacientes con tratamiento oportuno ≤ 37 d (${pt.pct}% de cumplimiento)`;
       const yLabel = (serie === 'ambos' && pt.val === coordsCancer.find(c => c.mes === pt.mes)?.val && pt.val > 0)
         ? pt.y + 18
         : pt.y - 10;
@@ -790,8 +807,8 @@ function obtenerMetadatosIndicador14() {
     metricas: [
       { etiqueta: 'Cumplimiento Global', valor: `${res.pctCumplimiento || '0.0'}%` },
       { etiqueta: 'Total Evaluados (Denominador)', valor: res.totalDiagnosticos || res.denominador || 0 },
-      { etiqueta: 'Sí Cumplen (Numerador ≤ 37 d)', valor: res.siCumplen || res.numerador || 0 },
-      { etiqueta: 'No Continuaron / Pendientes', valor: res.noContinuaron || res.noCumplen || 0 },
+      { etiqueta: 'Tratamiento Oportuno (≤ 37 d)', valor: res.siCumplen || res.numerador || 0 },
+      { etiqueta: 'Pendientes / Fuera de Plazo', valor: res.noContinuaron || res.noCumplen || 0 },
       { etiqueta: 'Excluidos (Paliativo/Defunción)', valor: res.excluidos || 0 },
       { etiqueta: 'Tiempo Promedio a Tratamiento', valor: res.diasPromedioTratamiento && res.diasPromedioTratamiento !== '—' ? `${res.diasPromedioTratamiento} d` : '—' }
     ],
@@ -857,30 +874,44 @@ function construirSeccionNominal(lista = padronNominalCompleto) {
       { titulo: 'Género', ancho: 8, alinear: 'center' },
       { titulo: 'Tipo Cáncer', ancho: 16 },
       { titulo: 'F. Diagnóstico', tipo: 'fecha', ancho: 14, alinear: 'center' },
+      { titulo: 'F. Límite Oportuna (37d)', tipo: 'fecha', ancho: 18, alinear: 'center' },
       { titulo: 'F. Tratamiento', tipo: 'fecha', ancho: 14, alinear: 'center' },
       { titulo: 'Días Tratam.', ...num, ancho: 12 },
+      { titulo: 'Plazo Restante', ancho: 20, alinear: 'center' },
       { titulo: 'Excluye', ancho: 10, alinear: 'center' },
       { titulo: 'Den', ...num, ancho: 8 },
       { titulo: 'Num', ...num, ancho: 8 },
       { titulo: 'Estado de Gestión', ancho: 26 }
     ],
-    filas: (lista || []).map(p => [
-      p.renaes || '00035125',
-      p.Anio || 2026,
-      NOMBRES_MESES_ESP[p.Mes] || p.Mes,
-      p.Id_Cita_Diagnostico || '',
-      p.num_doc || '',
-      p.Paciente || 'Sin nombre registrado',
-      p.id_genero || '',
-      p.Tipo_Cancer || '',
-      p.Fecha_Diagnostico || '',
-      p.Fecha_Tratamiento || '',
-      p.Dias_Hasta_Tratamiento != null ? p.Dias_Hasta_Tratamiento : '',
-      p.Excluye || 'NO',
-      Number(p.den) || 1,
-      Number(p.Num) || 0,
-      p.Estado_Gestion || (p.Num === 1 ? 'CUMPLE REQUISITO (≤ 37 d)' : 'NO CONTINUÓ / PENDIENTE')
-    ])
+    filas: (lista || []).map(p => {
+      const fDiag = p.Fecha_Diagnostico || '';
+      const fLimite = p.Fecha_Limite || calcularFechaLimiteTratamiento(fDiag, 37);
+      const plazo = calcularPlazoRestante(p);
+      let estadoTexto = p.Estado_Gestion;
+      if (p.Excluye === 'SI') estadoTexto = 'EXCLUIDO';
+      else if (p.Num === 1) estadoTexto = 'CUMPLE REQUISITO (≤ 37 d)';
+      else estadoTexto = 'PENDIENTE / NO CONTINUÓ';
+
+      return [
+        p.renaes || '00035125',
+        p.Anio || 2026,
+        NOMBRES_MESES_ESP[p.Mes] || p.Mes,
+        p.Id_Cita_Diagnostico || '',
+        p.num_doc || '',
+        p.Paciente || 'Sin nombre registrado',
+        p.id_genero || '',
+        p.Tipo_Cancer || '',
+        fDiag,
+        fLimite !== '—' ? fLimite : '',
+        p.Fecha_Tratamiento || '',
+        p.Dias_Hasta_Tratamiento != null ? p.Dias_Hasta_Tratamiento : '',
+        plazo.texto,
+        p.Excluye || 'NO',
+        Number(p.den) || 1,
+        Number(p.Num) || 0,
+        estadoTexto
+      ];
+    })
   };
 }
 
@@ -1021,6 +1052,107 @@ function exportarPadronIndicador14() {
 // ═════════════════════════════════════════════════════════════════════
 //  VISTA NOMINAL (PADRÓN DETALLADO DE PACIENTES DEL SCRIPT OFICIAL)
 // ═════════════════════════════════════════════════════════════════════
+
+// Calcula la fecha límite de tratamiento (37 días calendario posteriores al diagnóstico)
+function calcularFechaLimiteTratamiento(fechaDiagStr, diasPlazo = 37) {
+  if (!fechaDiagStr || fechaDiagStr === '—') return '—';
+  try {
+    const raw = String(fechaDiagStr).split('T')[0].trim();
+    const parts = raw.split('-');
+    if (parts.length < 3) return '—';
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dateObj = new Date(y, m, d);
+    dateObj.setDate(dateObj.getDate() + diasPlazo);
+    const resY = dateObj.getFullYear();
+    const resM = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const resD = String(dateObj.getDate()).padStart(2, '0');
+    return `${resY}-${resM}-${resD}`;
+  } catch (e) {
+    return '—';
+  }
+}
+
+// Calcula el plazo restante en días respecto a la fecha actual y el estado clínico del paciente
+function calcularPlazoRestante(paciente) {
+  if (paciente.Excluye === 'SI') {
+    return {
+      dias: null,
+      texto: 'Excluido',
+      clase: 'excluido',
+      tooltip: paciente.Motivo_Exclusion || 'Paciente excluido por criterio técnico (paliativo o defunción ≤ 37 d)'
+    };
+  }
+
+  // Si ya inició tratamiento oportuno (Num === 1 o tiene fecha de tratamiento dentro de los 37 días)
+  if (paciente.Num === 1 || (paciente.Fecha_Tratamiento && paciente.Dias_Hasta_Tratamiento != null && paciente.Dias_Hasta_Tratamiento <= 37)) {
+    const dias = paciente.Dias_Hasta_Tratamiento != null ? `${paciente.Dias_Hasta_Tratamiento} d` : '≤ 37 d';
+    return {
+      dias: 0,
+      texto: `Atendido (${dias})`,
+      clase: 'cumple',
+      tooltip: `Tratamiento oncológico oportuno iniciado a los ${dias} de diagnosticado`
+    };
+  }
+
+  if (!paciente.Fecha_Diagnostico) {
+    return { dias: null, texto: '—', clase: '', tooltip: 'Sin fecha de diagnóstico registrada' };
+  }
+
+  const fLimiteStr = paciente.Fecha_Limite || calcularFechaLimiteTratamiento(paciente.Fecha_Diagnostico, 37);
+  if (fLimiteStr === '—') {
+    return { dias: null, texto: '—', clase: '', tooltip: '' };
+  }
+
+  const parts = fLimiteStr.split('-');
+  const fLimite = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  fLimite.setHours(0, 0, 0, 0);
+
+  const diffMs = fLimite.getTime() - hoy.getTime();
+  const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDias > 20) {
+    return {
+      dias: diffDias,
+      texto: `${diffDias} d restantes`,
+      clase: 'largo',
+      tooltip: `Plazo amplio: quedan ${diffDias} días calendario para inicio oportuno (límite: ${fLimiteStr})`
+    };
+  } else if (diffDias > 7) {
+    return {
+      dias: diffDias,
+      texto: `${diffDias} d restantes`,
+      clase: 'medio',
+      tooltip: `Plazo medio: quedan ${diffDias} días (límite: ${fLimiteStr})`
+    };
+  } else if (diffDias > 0) {
+    return {
+      dias: diffDias,
+      texto: `${diffDias} d restantes`,
+      clase: 'critico',
+      tooltip: `Plazo crítico: vence en ${diffDias} días (límite: ${fLimiteStr})`
+    };
+  } else if (diffDias === 0) {
+    return {
+      dias: 0,
+      texto: 'Vence hoy',
+      clase: 'critico',
+      tooltip: `Urgente: Hoy es el último día para inicio oportuno de tratamiento (${fLimiteStr})`
+    };
+  } else {
+    const diasVencido = Math.abs(diffDias);
+    return {
+      dias: diffDias,
+      texto: `Vencido (-${diasVencido} d)`,
+      clase: 'critico',
+      tooltip: `Plazo oportuno vencido hace ${diasVencido} días (venció el ${fLimiteStr})`
+    };
+  }
+}
+
 function renderizarTablaNominal(lista = []) {
   const tbody = document.getElementById('indNominalTableBody');
   const countBadge = document.getElementById('badgeNominalTotalTable');
@@ -1029,17 +1161,28 @@ function renderizarTablaNominal(lista = []) {
   if (countBadge) countBadge.textContent = `${lista.length} pacientes`;
 
   if (!lista || lista.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="15" class="ind-td-empty">No se encontraron pacientes para los filtros especificados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="17" class="ind-td-empty">No se encontraron pacientes para los filtros especificados.</td></tr>';
     return;
   }
 
   tbody.innerHTML = lista.map(p => {
     let statusClass = 'nocumple';
-    if (p.Excluye === 'SI') statusClass = 'excluido';
-    else if (p.Num === 1) statusClass = 'cumple';
+    let estadoTexto = p.Estado_Gestion;
+    if (p.Excluye === 'SI') {
+      statusClass = 'excluido';
+      estadoTexto = 'EXCLUIDO';
+    } else if (p.Num === 1) {
+      statusClass = 'cumple';
+      estadoTexto = 'CUMPLE REQUISITO (≤ 37 d)';
+    } else {
+      estadoTexto = 'PENDIENTE / NO CONTINUÓ';
+    }
 
-    const dias = p.Dias_Hasta_Tratamiento != null ? `${p.Dias_Hasta_Tratamiento} d` : '—';
+    const fDiag = p.Fecha_Diagnostico || '—';
+    const fLimite = p.Fecha_Limite || calcularFechaLimiteTratamiento(fDiag, 37);
     const fTrat = p.Fecha_Tratamiento || '—';
+    const dias = p.Dias_Hasta_Tratamiento != null ? `${p.Dias_Hasta_Tratamiento} d` : '—';
+    const plazo = calcularPlazoRestante(p);
 
     return `
       <tr>
@@ -1051,13 +1194,15 @@ function renderizarTablaNominal(lista = []) {
         <td><strong>${esc(p.Paciente || 'Sin nombre registrado')}</strong></td>
         <td>${esc(p.id_genero)}</td>
         <td>${esc(p.Tipo_Cancer)}</td>
-        <td>${esc(p.Fecha_Diagnostico)}</td>
+        <td>${esc(fDiag)}</td>
+        <td><strong style="color:#1e40af;">${esc(fLimite)}</strong></td>
         <td>${esc(fTrat)}</td>
         <td><strong>${esc(dias)}</strong></td>
+        <td><span class="ind-plazo-badge ${plazo.clase}" title="${esc(plazo.tooltip)}">${esc(plazo.texto)}</span></td>
         <td>${esc(p.Excluye)}</td>
         <td>${p.den}</td>
         <td><strong>${p.Num}</strong></td>
-        <td><span class="ind-status-pill ${statusClass}">${esc(p.Estado_Gestion)}</span></td>
+        <td><span class="ind-status-pill ${statusClass}">${esc(estadoTexto)}</span></td>
       </tr>
     `;
   }).join('');

@@ -1,5 +1,6 @@
 // Controlador de lectura de catálogos HIS y actividad histórica de profesionales.
 const { sql, poolPromise, withTransientRetry } = require('../config/db');
+const alcance = require('./alcance');
 
 // Ejecuta una consulta de catálogo sin parámetros y normaliza la respuesta y los errores HTTP.
 const executeQuery = async (query, res) => {
@@ -188,11 +189,14 @@ const getActividadPersonal = async (req, res) => {
           AND (@fechaFin IS NULL OR np.Fecha_Atencion < DATEADD(DAY, 1, @fechaFin))
         ORDER BY np.Fecha_Atencion DESC, np.Num_Reg DESC, np.Id_Correlativo_Item;
       `;
-    const result = await withTransientRetry(() => pool.request()
-      .input('identificador', sql.NVarChar, String(id))
-      .input('fechaInicio', sql.Date, fechaInicio || null)
-      .input('fechaFin', sql.Date, fechaFin || null)
-      .query(activityQuery));
+    // Un médico restringido solo ve su propia actividad: con otro profesional, los totales salen en cero.
+    const result = await withTransientRetry(() => {
+      const request = pool.request()
+        .input('identificador', sql.NVarChar, String(id))
+        .input('fechaInicio', sql.Date, fechaInicio || null)
+        .input('fechaFin', sql.Date, fechaFin || null);
+      return request.query(alcance.soloMisAtenciones(req, request, activityQuery));
+    });
 
     const personal = result.recordsets[0][0];
     if (!personal) return res.status(404).json({ message: 'No se encontró el profesional.' });

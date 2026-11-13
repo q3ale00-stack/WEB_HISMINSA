@@ -1,5 +1,6 @@
 // Controlador de búsqueda y lectura de fichas, atenciones e indicadores individuales de pacientes.
 const { sql, poolPromise, withTransientRetry } = require('../config/db');
+const alcance = require('./alcance');
 
 // Resuelve el identificador interno aceptando tanto el ID HIS como el número de documento.
 const resolverIdPaciente = async (pool, identificador) => {
@@ -43,6 +44,11 @@ const getPacientes = async (req, res) => {
       )`);
       whereSql += ` AND (${termConditions.join(' AND ')})`;
       terms.forEach((term, index) => parameters.push([`q${index}`, sql.NVarChar, `%${term}%`]));
+    }
+    // Un médico restringido solo encuentra a los pacientes que ha atendido.
+    if (alcance.esLimitado(req)) {
+      whereSql += ' AND EXISTS (SELECT 1 FROM NProduccion mio WHERE mio.Id_Paciente = p.Id_Paciente AND mio.Id_Personal = @miPersonal)';
+      parameters.push(['miPersonal', sql.NVarChar(50), alcance.miPersonal(req)]);
     }
 
     // El primer SELECT obtiene la página y el segundo el total de coincidencias para calcular páginas.

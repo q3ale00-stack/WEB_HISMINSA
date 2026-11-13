@@ -13,9 +13,11 @@
     <div id="nominalAtencionesApp" class="nominal-app"></div>
   </div>
   <div id="atePanelSimple" class="pac-panel" role="tabpanel">
-  <div class="card search-card">
+  <!-- «Mis atenciones» (médico): panel de filtros al estilo de la búsqueda avanzada; js/app.js lo dibuja. -->
+  <div id="mateFiltros" class="mate-filtros" hidden></div>
+  <div class="card search-card ate-form-card">
     <form class="search-bar" id="formAtenciones" role="search">
-      <input class="input" id="qAtenciones" type="search" placeholder="Cita, ID de paciente, ID de personal o código HIS" autocomplete="off" aria-label="Buscar atención">
+      <input class="input" id="qAtenciones" type="search" placeholder="Cita, paciente, DNI, ID de personal, código o diagnóstico" autocomplete="off" aria-label="Buscar atención">
       <div class="search-buttons">
         <button class="btn btn-primary" type="submit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Buscar</button>
         <button class="btn btn-secondary" type="reset">Limpiar</button>
@@ -25,7 +27,7 @@
         <label class="label" for="hastaAtenciones">Hasta<input class="input" id="hastaAtenciones" type="date"></label>
       </div>
     </form>
-    <p class="search-hint">Escribe un dato, elige un rango de fechas o ambos. Se muestran las 200 atenciones más recientes.</p>
+    <p class="search-hint">Escribe un dato (cita, paciente, DNI, código o diagnóstico), elige un rango de fechas o ambos. Se cargan de 20 en 20, de la más reciente a la más antigua.</p>
   </div>
   <div id="resAtenciones" aria-live="polite"></div>
   </div>

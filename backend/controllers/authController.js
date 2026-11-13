@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const { promisify } = require('util');
 const { sql, poolPromise } = require('../config/db');
+const { ACCESO_DENEGADO } = require('./mensajes');
 
 const scrypt = promisify(crypto.scrypt);
 const COOKIE_NAME = 'his_session';
@@ -22,8 +23,12 @@ const publicUser = row => ({
   cmp: row.Cmp || '',
   establishment: row.Establishment || '',
   personalId: row.PersonalId || '',
+  // Los administradores siempre tienen acceso completo; los médicos, el que se eligió al crear la cuenta.
+  access: row.Role === 'admin' ? 'completo' : (row.Acceso || 'completo'),
   createdAt: row.CreatedAt
 });
+
+const ACCESOS = ['completo', 'restringido'];
 
 const hashPassword = async password => {
   const salt = crypto.randomBytes(16);
@@ -111,6 +116,16 @@ const ensureAuthSchema = async () => {
       );
       CREATE INDEX IX_HisAccesos_Fecha ON dbo.HisAccesos(Fecha DESC);
     END;
+
+    -- Nivel de acceso de los médicos: «completo» (todo menos la administración) o «restringido»
+    -- (solo sus atenciones y la historia de los pacientes que atendió; ver controllers/alcance.js)
+    -- Las cuentas que ya existían quedan con acceso completo.
+    IF COL_LENGTH(N'dbo.HisUsuarios', N'Acceso') IS NULL
+    BEGIN
+      ALTER TABLE dbo.HisUsuarios ADD Acceso nvarchar(20) NOT NULL
+        CONSTRAINT DF_HisUsuarios_Acceso DEFAULT N'completo'
+        CONSTRAINT CK_HisUsuarios_Acceso CHECK (Acceso IN (N'completo', N'restringido'));
+    END;
   `);
 
   const configuredAdmin = [
@@ -190,7 +205,15 @@ const requireAuth = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') return res.status(403).json({ message: 'Solo un administrador puede realizar esta acción.' });
+  if (req.user?.role !== 'admin') return res.status(403).json({ message: ACCESO_DENEGADO, code: 'ACCESO_DENEGADO' });
+  next();
+};
+
+// Búsquedas avanzadas y Consultas: administradores y médicos con acceso completo.
+const requireAccesoCompleto = (req, res, next) => {
+  if (req.user?.access !== 'completo') {
+    return res.status(403).json({ message: ACCESO_DENEGADO, code: 'ACCESO_DENEGADO' });
+  }
   next();
 };
 
@@ -350,9 +373,11 @@ const searchPersonnel = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
-  const { username, password, role, fullName, dni, email, phone, specialty, personalId } = req.body;
+  const { username, password, role, fullName, dni, email, phone, specialty, personalId, access } = req.body;
   const normalizedRole = typeof role === 'string' ? role : '';
   if (!['admin', 'doctor'].includes(normalizedRole)) return res.status(400).json({ message: 'Selecciona un rol válido.' });
+  if (normalizedRole === 'doctor' && !ACCESOS.includes(access)) return res.status(400).json({ message: 'Elige el nivel de acceso del médico.' });
+  const acceso = normalizedRole === 'doctor' ? access : 'completo';
   if (typeof username !== 'string' || username.trim().length < 3 || username.trim().length > 100) {
     return res.status(400).json({ message: 'El usuario debe tener entre 3 y 100 caracteres.' });
   }
@@ -437,12 +462,13 @@ const createUser = async (req, res) => {
       .input('cmp', sql.NVarChar(50), profile.cmp)
       .input('establishment', sql.NVarChar(200), profile.establishment)
       .input('personalId', sql.NVarChar(50), profile.personalId)
+      .input('acceso', sql.NVarChar(20), acceso)
       .query(`
         INSERT INTO dbo.HisUsuarios
-          (Username, PasswordHash, Role, FullName, Dni, Email, Phone, Profession, Specialty, Cmp, Establishment, PersonalId)
+          (Username, PasswordHash, Role, FullName, Dni, Email, Phone, Profession, Specialty, Cmp, Establishment, PersonalId, Acceso)
         OUTPUT INSERTED.IdUsuario
         VALUES
-          (@username, @passwordHash, @role, @fullName, @dni, @email, @phone, @profession, @specialty, @cmp, @establishment, @personalId)
+          (@username, @passwordHash, @role, @fullName, @dni, @email, @phone, @profession, @specialty, @cmp, @establishment, @personalId, @acceso)
       `);
     res.status(201).json({ id: created.recordset[0].IdUsuario, message: 'La cuenta fue creada.' });
   } catch (error) {
@@ -459,6 +485,7 @@ module.exports = {
   initializeAuth,
   requireAuth,
   requireAdmin,
+  requireAccesoCompleto,
   limitLoginAttempts,
   login,
   getProfile,

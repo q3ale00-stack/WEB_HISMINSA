@@ -114,22 +114,47 @@
 /* ── Inicio ── */
 :root[data-theme] #view-inicio .home-hero.hh {
   border: 1px solid rgba(255,255,255,.16); border-radius: 26px;
-  background: linear-gradient(125deg, rgba(36,8,68,.97) 0%, rgba(78,18,122,.94) 40%, rgba(132,24,150,.90) 72%, rgba(186,32,146,.86) 100%);
-  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.7);
-  box-shadow: 0 18px 44px rgba(52,10,92,.36), inset 0 1px 0 rgba(255,255,255,.20);
+  /* Base índigo-ciruela uniforme; el magenta queda solo como un resplandor en la esquina,
+     así el lado derecho ya no se satura y las tarjetas de vidrio se leen igual que las de la izquierda. */
+  background:
+    radial-gradient(55% 85% at 100% 105%, rgba(226,58,168,.42), transparent 70%),
+    radial-gradient(45% 70% at 82% -10%, rgba(108,92,255,.30), transparent 70%),
+    linear-gradient(125deg, #1a0734 0%, #2e0d58 42%, #451372 74%, #571880 100%);
+  backdrop-filter: blur(var(--vidrio-blur)) saturate(1.5); -webkit-backdrop-filter: blur(var(--vidrio-blur)) saturate(1.5);
+  box-shadow: 0 18px 44px rgba(36,8,70,.38), inset 0 1px 0 rgba(255,255,255,.16);
 }
 :root[data-theme] .hh-glass {
-  border-radius: 20px; border-color: rgba(255,255,255,.34);
+  border-radius: 20px; border-color: rgba(255,255,255,.20);
   /* Tinte oscuro bajo el brillo: sin él, las luces de la portada dejan el texto blanco sin contraste. */
-  background: linear-gradient(140deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 100%), rgba(42,8,84,.42);
+  background: linear-gradient(150deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.03) 100%), rgba(18,5,40,.42);
   backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.38), 0 12px 30px rgba(20,0,40,.26);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 12px 30px rgba(10,0,30,.30);
 }
-:root[data-theme] .hh-label,
-:root[data-theme] .hh-mini > span:last-child { color: rgba(255,255,255,.94); }
-:root[data-theme] .hh-b1 { background: #c52fc0; }
-:root[data-theme] .hh-b2 { background: #b324b8; }
-:root[data-theme] .hh-b3 { background: #6a4dff; opacity: .34; }
+:root:not([data-theme="dark"]) a.hh-glass.hh-mini:hover { background: linear-gradient(150deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.05) 100%), rgba(18,5,40,.42); border-color: rgba(255,150,215,.45); }
+:root:not([data-theme="dark"]) .hh-label,
+:root:not([data-theme="dark"]) .hh-mini > span:last-child { color: rgba(255,255,255,.86); }
+:root:not([data-theme="dark"]) .hh-value small,
+:root:not([data-theme="dark"]) .hh-foot { color: rgba(255,255,255,.70); }
+/* Luces de fondo más tenues y con un toque azul frío para dar profundidad sin competir con las cifras. */
+:root:not([data-theme="dark"]) .hh-b1 { background: #8e3fd8; opacity: .38; }
+:root:not([data-theme="dark"]) .hh-b2 { background: #d63393; opacity: .30; }
+:root:not([data-theme="dark"]) .hh-b3 { background: #4f7dff; opacity: .22; }
+:root:not([data-theme="dark"]) .hh-pulse { opacity: .14; }
+/* Un solo acento rosa encendido para lo que está seleccionado: punto, mes y saludo. */
+:root:not([data-theme="dark"]) #view-inicio .hh .home-greeting { background: rgba(255,120,200,.14); border-color: rgba(255,150,215,.34); color: #ffd6ef; }
+:root:not([data-theme="dark"]) .hh-spark-pt { border-color: #f6cdea; background: #2e0d58; }
+:root:not([data-theme="dark"]) .hh-spark-pt:hover { background: #ff7cc8; }
+:root:not([data-theme="dark"]) .hh-spark-pt.is-sel { border-color: #fff; background: #ff4fae; box-shadow: 0 0 0 5px rgba(255,79,174,.22), 0 0 18px rgba(255,79,174,.55); }
+:root:not([data-theme="dark"]) .hh-spark-meses span { color: rgba(255,255,255,.55); }
+:root:not([data-theme="dark"]) .hh-spark-meses span.is-sel { background: #ff4fae; color: #fff; }
+/* Tendencia: verde menta si sube, coral si baja; ambos con buen contraste sobre el morado. */
+:root:not([data-theme="dark"]) .hh-trend.sube { background: rgba(72,214,160,.18); border-color: rgba(110,230,180,.50); color: #c9f7e3; }
+:root:not([data-theme="dark"]) .hh-trend.baja { background: rgba(255,96,120,.20); border-color: rgba(255,130,150,.55); color: #ffd3da; }
+:root:not([data-theme="dark"]) .hh-mini-icon { background: rgba(255,120,200,.16); color: #ffc4e8; }
+:root:not([data-theme="dark"]) .hh-action-btn { color: #2e0d58; }
+/* Botón «Buscar» con el degradado de marca para que destaque sobre la caja blanca. */
+:root:not([data-theme="dark"]) #view-inicio .hh .home-search-box .btn-primary { background: linear-gradient(135deg, #c9249b 0%, #7a1a9c 100%); border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(160,30,140,.35); }
+:root:not([data-theme="dark"]) #view-inicio .hh .home-search-box .btn-primary:hover { background: linear-gradient(135deg, #d93aab 0%, #8d22b4 100%); }
 /* Barras del gráfico de Inicio con color pleno; el mes elegido, en magenta encendido. */
 :root[data-theme] .home-bar { background: linear-gradient(180deg, #a93ad6 0%, #7a1a9c 100%); }
 :root[data-theme] .home-bar-col:hover .home-bar,

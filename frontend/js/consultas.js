@@ -71,6 +71,7 @@ const CX = {
   pagina: 1,
   porPagina: 25,
   graficoVisible: true,
+  pestana: null,
   secuencia: 0
 };
 
@@ -143,7 +144,39 @@ function cxFiltroHtml(campo, f = {}) {
 
 function cxPintarFormulario(items = []) {
   const de = campo => items.find(i => i.field === campo);
-  cxEl('cxFormulario').innerHTML = CX_SECCIONES.map(([titulo, campos]) => `<section class="cx-seccion"><h4>${esc(titulo)}</h4><div class="cx-seccion-campos">${campos.map(c => cxFiltroHtml(c, de(c))).join('')}</div></section>`).join('');
+  cxEl('cxFormulario').innerHTML = CX_SECCIONES.map(([titulo, campos], i) => `<section class="cx-seccion" id="cxSeccion${i}" role="tabpanel" aria-label="${esc(titulo)}" data-cx-seccion="${i}"${CX.pestana === String(i) ? '' : ' hidden'}><div class="cx-seccion-campos">${campos.map(c => cxFiltroHtml(c, de(c))).join('')}</div></section>`).join('');
+}
+
+// ── Pestañas de filtros: solo una abierta; pulsar la abierta la cierra. ──
+const cxSeccionDeCampo = campo => String(CX_SECCIONES.findIndex(([, campos]) => campos.includes(campo)));
+
+function cxPintarPestanas(cuentas = {}) {
+  const pestanas = [...CX_SECCIONES.map(([titulo], i) => [String(i), titulo, `cxSeccion${i}`]), ['bloques', 'Combinaciones Y / O', 'cxSeccionBloques']];
+  cxEl('cxPestanas').innerHTML = pestanas.map(([id, titulo, panel]) => {
+    const activa = CX.pestana === id;
+    const n = cuentas[id] || 0;
+    return `<button type="button" class="cx-pestana${activa ? ' active' : ''}${n ? ' con-filtros' : ''}" role="tab" aria-selected="${activa}" aria-controls="${panel}" data-cx-pestana="${id}">${esc(titulo)}${n ? ` <span class="cx-cuenta">${n}</span>` : ''}<span class="cx-flecha" aria-hidden="true">▾</span></button>`;
+  }).join('');
+}
+
+function cxMostrarPestana(id) {
+  CX.pestana = CX.pestana === id ? null : id;
+  cxEl('cxFormulario').querySelectorAll('[data-cx-seccion]').forEach(s => { s.hidden = s.dataset.cxSeccion !== CX.pestana; });
+  cxEl('cxSeccionBloques').hidden = CX.pestana !== 'bloques';
+  const conFoco = document.activeElement?.dataset?.cxPestana;
+  cxActualizarFrase();
+  // Las pestañas se redibujan: devuelve el foco a la que se pulsó.
+  if (conFoco) cxEl('cxPestanas').querySelector(`[data-cx-pestana="${conFoco}"]`)?.focus();
+}
+
+// Texto corto de un filtro para su ficha: «Sexo: Mujeres», «Edad entre 0 y 11».
+function cxTextoFiltro(f) {
+  const [, nombre, tipo] = CX_CAMPOS.find(c => c[0] === f.field);
+  const lista = CX_FILTRO_LISTA[f.field];
+  const valor = Array.isArray(f.value) ? f.value.join(', ') : (lista?.find(([v]) => v === f.value)?.[1] || f.value);
+  if (lista && f.operator === 'equals') return `${nombre}: ${valor}`;
+  const operador = (CX_OPERADORES[tipo].find(([o]) => o === f.operator)?.[1] || f.operator).replace(/ \(.*\)$/, '');
+  return `${nombre} ${operador} ${valor}${f.operator === 'between' ? ` y ${f.value2}` : ''}`;
 }
 
 function cxLeerFormulario() {
@@ -249,11 +282,7 @@ function cxEventoFila(fila, objetivo) {
 
 // ── Estado del panel ──
 function cxPintarMedida() {
-  document.querySelectorAll('#view-consultas [data-cx-medida]').forEach(b => {
-    const activa = b.dataset.cxMedida === CX.medida;
-    b.classList.toggle('active', activa);
-    b.setAttribute('aria-pressed', String(activa));
-  });
+  cxEl('cxMedida').value = CX.medida;
 }
 
 function cxPintarGrupos() {
@@ -262,18 +291,30 @@ function cxPintarGrupos() {
     b.classList.toggle('active', activo);
     b.setAttribute('aria-pressed', String(activo));
   });
+  const nombres = [...CX.grupos].map(cxNombreGrupo);
+  cxEl('cxGruposResumen').textContent = nombres.length ? nombres.join(', ') : 'Sin agrupar';
 }
 
 function cxActualizarFrase() {
   const grupos = [...CX.grupos].map(cxNombreGrupo).join(', ');
   const formulario = cxLeerFormulario();
-  const enFormulario = formulario ? formulario.items.length : 0;
+  const items = formulario ? formulario.items : [];
   const enBloques = cxLeerBloques().reduce((t, b) => t + b.items.length, 0);
-  const total = enFormulario + enBloques;
+  const total = items.length + enBloques;
   CX.frase = `${cxNombreMedida(CX.medida)}${grupos ? ` por ${grupos}` : ', sin agrupar'} ${cxTextoPeriodo()}${total ? `, con ${total} ${total === 1 ? 'filtro' : 'filtros'}` : ''}.`;
   cxEl('cxFrase').textContent = CX.frase;
-  cxEl('cxFiltrosN').hidden = !enFormulario;
-  cxEl('cxFiltrosN').textContent = `${enFormulario} ${enFormulario === 1 ? 'activo' : 'activos'}`;
+
+  // Cuántos filtros hay en cada pestaña y una ficha por cada uno, para verlos con las pestañas cerradas.
+  const cuentas = { bloques: enBloques };
+  items.forEach(f => { const s = cxSeccionDeCampo(f.field); cuentas[s] = (cuentas[s] || 0) + 1; });
+  cxPintarPestanas(cuentas);
+  cxEl('cxChips').innerHTML = [
+    ...items.map(f => `<span class="cx-chip"><button type="button" class="cx-chip-texto" data-cx-pestana-ir="${cxSeccionDeCampo(f.field)}" title="Editar">${esc(cxTextoFiltro(f))}</button><button type="button" class="cx-chip-quitar" data-cx-quitar-filtro="${esc(f.field)}" aria-label="Quitar filtro ${esc(cxTextoFiltro(f))}">×</button></span>`),
+    enBloques ? `<span class="cx-chip"><button type="button" class="cx-chip-texto" data-cx-pestana-ir="bloques" title="Editar">${enBloques} ${enBloques === 1 ? 'criterio' : 'criterios'} en combinaciones Y / O</button></span>` : ''
+  ].join('');
+  cxEl('cxActivos').hidden = !total;
+  const ambito = { cita: 'misma cita', paciente: 'mismo paciente', registro: 'misma fila HIS' }[cxEl('cxFormAmbito').value];
+  cxEl('cxReglasResumen').textContent = `${ambito} · ${cxEl('cxFormModo').value === 'OR' ? 'al menos uno' : 'todos'}`;
 }
 
 function cxLimpiarFiltros() {
@@ -590,6 +631,8 @@ async function abrirVistaConsultas() {
 // «Filtrar por este código» del detalle de un código: lo pone en el filtro de código HIS.
 function cxFiltrarPorCodigo(codigo) {
   showView('consultas');
+  const seccion = cxSeccionDeCampo('codigoHIS');
+  if (CX.pestana !== seccion) cxMostrarPestana(seccion);
   const fila = cxEl('cxFormulario').querySelector('.cx-f-campo[value="codigoHIS"]').closest('.cx-fila');
   fila.querySelector('.cx-f-operador').value = 'equals';
   fila.querySelector('.cx-f-valor').value = codigo;
@@ -612,14 +655,27 @@ alCargarVistas(() => {
   if (!cxEl('cxPanel')) return;
   const opcion = (atributo, v, t) => `<button type="button" class="cx-opcion" ${atributo}="${esc(v)}">${esc(t)}</button>`;
   cxEl('cxRapidas').innerHTML = CX_RAPIDAS.map((r, i) => `<button type="button" class="cx-rapida" data-cx-rapida="${i}">${esc(r.nombre)}</button>`).join('');
-  cxEl('cxMedidas').innerHTML = CX_MEDIDAS.map(m => opcion('data-cx-medida', m.valor, m.nombre)).join('');
-  cxEl('cxMedidasExtra').innerHTML = CX_MEDIDAS_EXTRA.map(([v, t]) => opcion('data-cx-medida', v, t)).join('');
+  cxEl('cxMedida').innerHTML = `<optgroup label="Contar">${cxOpciones(CX_MEDIDAS.map(m => [m.valor, m.nombre]))}</optgroup><optgroup label="Promedios, máximos y sumas">${cxOpciones(CX_MEDIDAS_EXTRA)}</optgroup>`;
   cxEl('cxGrupos').innerHTML = [...CX_GRUPOS, ...CX_GRUPOS_MAS].map(([v, t]) => opcion('data-cx-grupo', v, t)).join('');
   cxEl('cxPeriodo').innerHTML = cxOpciones(cxOpcionesPeriodo());
   cxPintarMedida();
   cxPintarGrupos();
   cxPintarFormulario();
   cxPintarBloques([]);
+  cxActualizarFrase();
+
+  // Las consultas rápidas van en una línea sin barra: la rueda del ratón las desplaza de lado.
+  cxEl('cxRapidas').addEventListener('wheel', e => {
+    const caja = e.currentTarget;
+    if (caja.scrollWidth <= caja.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    caja.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+
+  // Los desplegables se cierran al pulsar fuera de ellos o con Escape.
+  const cerrarDesplegables = fuera => document.querySelectorAll('#view-consultas details.cx-desplegable[open]').forEach(d => { if (!fuera || !d.contains(fuera)) d.open = false; });
+  document.addEventListener('click', e => cerrarDesplegables(e.target));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarDesplegables(null); });
 
   const vista = cxEl('view-consultas');
   vista.addEventListener('input', e => {
@@ -636,6 +692,7 @@ alCargarVistas(() => {
     const t = e.target;
     const fila = t.closest('.cx-fila');
     if (fila) cxEventoFila(fila, t);
+    if (t.id === 'cxMedida') CX.medida = t.value;
     if (t.id === 'cxPeriodo') cxEl('cxFechas').hidden = t.value !== 'rango';
     if (t.id === 'cxPorPagina') { CX.porPagina = t.value === 'all' ? -1 : Number(t.value); CX.pagina = 1; cxPintarTabla(); }
     if (cxEl('cxPanel').contains(t)) cxActualizarFrase();
@@ -644,8 +701,17 @@ alCargarVistas(() => {
     const t = e.target;
     const rapida = t.closest('[data-cx-rapida]');
     if (rapida) { cxAplicarRapida(CX_RAPIDAS[Number(rapida.dataset.cxRapida)]); return; }
-    const medida = t.closest('[data-cx-medida]');
-    if (medida) { CX.medida = medida.dataset.cxMedida; cxPintarMedida(); cxActualizarFrase(); return; }
+    const pestana = t.closest('[data-cx-pestana]');
+    if (pestana) { cxMostrarPestana(pestana.dataset.cxPestana); return; }
+    const ir = t.closest('[data-cx-pestana-ir]');
+    if (ir) { if (CX.pestana !== ir.dataset.cxPestanaIr) cxMostrarPestana(ir.dataset.cxPestanaIr); return; }
+    const quitarFiltro = t.closest('[data-cx-quitar-filtro]');
+    if (quitarFiltro) {
+      const campo = quitarFiltro.dataset.cxQuitarFiltro;
+      cxEl('cxFormulario').querySelector(`.cx-f-campo[value="${campo}"]`).closest('.cx-fila').outerHTML = cxFiltroHtml(campo);
+      cxActualizarFrase();
+      return;
+    }
     const grupo = t.closest('[data-cx-grupo]');
     if (grupo) {
       const g = grupo.dataset.cxGrupo;

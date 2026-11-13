@@ -190,23 +190,56 @@ function histResumenAbierto() {
   try { return localStorage.getItem(HIST_RESUMEN_CLAVE) === 'abierto'; } catch (_) { return false; }
 }
 
-function histResumenHtml(entradas, ctx) {
+// Cifras del resumen. Con ctx.servidor.resumen vienen calculadas en el servidor sobre TODAS las atenciones
+// (las listas paginadas solo traen una parte); si no, se calculan con las atenciones cargadas.
+function histEstadisticas(entradas, ctx) {
+  const srv = ctx.servidor;
+  if (srv?.resumen) {
+    const r = srv.resumen;
+    const par = (x, opciones) => (x ? [histCasoNombre(x.nombre, opciones), x.n] : null);
+    return {
+      total: srv.total,
+      servicios: r.servicios.map(s => [histCasoNombre(s.nombre), s.n]),
+      profesionales: { n: r.profesionales, top: par(r.profesionalFrecuente, { siglas: false }) },
+      pacientes: { n: r.pacientes, top: par(r.pacienteFrecuente, { siglas: false }) },
+      financiador: par(r.financiador),
+      nuevos: r.nuevos,
+      primera: histFechaIso(r.primera),
+      ultima: histFechaIso(r.ultima),
+      diagnosticos: r.diagnosticos,
+      procedimientos: r.procedimientos
+    };
+  }
   const datos = entradas.map(([r]) => histDatosCita(r, ctx));
-  const total = entradas.length;
-  const servicios = histContarPor(datos, 'servicio');
   const profesionales = histContarPor(datos, 'personal');
   const pacientes = histContarPor(datos, 'paciente');
-  const financiadores = histContarPor(datos, 'financiador');
-  const nuevos = datos.filter(dc => dc.condServ === 'Nuevo').length;
   const fechas = entradas.map(([r]) => histFechaIso(r.Fecha_Atencion)).filter(Boolean);
-  const periodo = fechas.length ? (fechas[0] === fechas[fechas.length - 1] ? histFechaTexto(fechas[0]) : `${histFechaTexto(fechas[fechas.length - 1])} – ${histFechaTexto(fechas[0])}`) : '—';
+  return {
+    total: entradas.length,
+    servicios: histContarPor(datos, 'servicio'),
+    profesionales: { n: profesionales.length, top: profesionales[0] || null },
+    pacientes: { n: pacientes.length, top: pacientes[0] || null },
+    financiador: histContarPor(datos, 'financiador')[0] || null,
+    nuevos: datos.filter(dc => dc.condServ === 'Nuevo').length,
+    primera: fechas[fechas.length - 1] || '',
+    ultima: fechas[0] || '',
+    diagnosticos: histMasFrecuentes(entradas, x => !histEsProcedimiento(x)),
+    procedimientos: histMasFrecuentes(entradas, histEsProcedimiento)
+  };
+}
+
+function histResumenHtml(entradas, ctx) {
+  const est = histEstadisticas(entradas, ctx);
+  const { total, servicios, nuevos } = est;
+  const periodo = !est.ultima ? '—' : est.primera === est.ultima ? histFechaTexto(est.ultima) : `${histFechaTexto(est.primera)} – ${histFechaTexto(est.ultima)}`;
+  const fechas = est.ultima ? [est.ultima] : [];
   const pct = n => `${Math.round((n / total) * 100)}%`;
 
   const kpi = (icono, titulo, valor, detalle = '') => `<div class="ps-gen-kpi">
       <span class="ps-gen-kpi-ico">${histIcono(icono, 16)}</span>
       <div><span>${titulo}</span><b>${valor}</b>${detalle ? `<small title="${detalle}">${detalle}</small>` : ''}</div>
     </div>`;
-  const masFrecuente = lista => (lista[0] ? `Más frecuente: ${esc(lista[0][0])} (${lista[0][1]})` : '');
+  const masFrecuente = grupo => (grupo.top ? `Más frecuente: ${esc(grupo.top[0])} (${formatNumber(grupo.top[1])})` : '');
 
   // Barra apilada con la proporción de atenciones de cada servicio.
   const distribucion = servicios.length > 1 ? `<section class="ps-gen-dist">
@@ -217,26 +250,27 @@ function histResumenHtml(entradas, ctx) {
       <ul class="ps-gen-leyenda">${servicios.map(([s, n]) => `<li style="--svc-h:${histTonoServicio(s)}"><i aria-hidden="true"></i>${esc(s)} <b>${formatNumber(n)}</b></li>`).join('')}</ul>
     </section>` : '';
 
-  const [finTop, finN] = financiadores[0] || [];
+  const [finTop, finN] = est.financiador || [];
   return `<details class="ps-resumen" data-hist-resumen${histResumenAbierto() ? ' open' : ''}>
     <summary><span>Resumen</span><small>${histPlural(total, 'atención', 'atenciones')} · ${esc(periodo)}</small></summary>
     <div class="ps-gen">
       <div class="ps-gen-kpis">
         ${kpi('condicion', 'Atenciones', formatNumber(total), nuevos ? `${histPlural(nuevos, 'nueva', 'nuevas')} en su servicio` : '')}
-        ${kpi('lugar', 'Servicios', formatNumber(servicios.length), esc(servicios.slice(0, 2).map(([s, n]) => `${s} (${n})`).join(' · ')))}
-        ${ctx.contexto !== 'paciente' ? kpi('grupo', 'Pacientes', formatNumber(pacientes.length), masFrecuente(pacientes)) : ''}
-        ${ctx.contexto !== 'personal' ? kpi('edad', 'Profesionales', formatNumber(profesionales.length), masFrecuente(profesionales)) : ''}
+        ${kpi('lugar', 'Servicios', formatNumber(servicios.length), esc(servicios.slice(0, 2).map(([s, n]) => `${s} (${formatNumber(n)})`).join(' · ')))}
+        ${ctx.contexto !== 'paciente' ? kpi('grupo', 'Pacientes', formatNumber(est.pacientes.n), masFrecuente(est.pacientes)) : ''}
+        ${ctx.contexto !== 'personal' ? kpi('edad', 'Profesionales', formatNumber(est.profesionales.n), masFrecuente(est.profesionales)) : ''}
         ${kpi('financiador', 'Financiador', finTop ? esc(finTop) : '—', finTop ? `${pct(finN)} de las atenciones` : '')}
         ${kpi('turno', 'Periodo', esc(periodo), fechas.length ? `Última: ${esc(histFechaTexto(fechas[0]))}` : '')}
       </div>
       ${distribucion}
-      ${ctx.frecuentesEn ? '' : histFrecuentesHtml(entradas)}
+      ${ctx.frecuentesEn ? '' : histFrecuentesHtml(entradas, ctx)}
     </div>
   </details>`;
 }
 
 // Diagnósticos y procedimientos más frecuentes (parte del resumen; con ctx.frecuentesEn se pintan aparte).
-function histFrecuentesHtml(entradas) {
+function histFrecuentesHtml(entradas, ctx = {}) {
+  const est = histEstadisticas(entradas, ctx);
   const topLista = (titulo, lista, vacio) => {
     const max = lista[0]?.n || 1;
     return `<section class="ps-gen-top-col"><h4>${titulo}</h4>${lista.length
@@ -246,8 +280,8 @@ function histFrecuentesHtml(entradas) {
       : `<p class="ps-gen-vacio">${vacio}</p>`}</section>`;
   };
   return `<div class="ps-gen-top">
-    ${topLista('Diagnósticos más frecuentes', histMasFrecuentes(entradas, x => !histEsProcedimiento(x)), 'Sin diagnósticos registrados.')}
-    ${topLista('Procedimientos más frecuentes', histMasFrecuentes(entradas, histEsProcedimiento), 'Sin procedimientos registrados.')}
+    ${topLista('Diagnósticos más frecuentes', est.diagnosticos, 'Sin diagnósticos registrados.')}
+    ${topLista('Procedimientos más frecuentes', est.procedimientos, 'Sin procedimientos registrados.')}
   </div>`;
 }
 
@@ -368,22 +402,35 @@ function histTablaHtml(entradas, ctx) {
 // Pinta el resumen y las atenciones (tabla o tarjetas) en «box» y conecta los botones con el detalle y las fichas.
 // El resumen solo aparece con dos atenciones o más; con ctx.resumenEn se pinta en ese elemento (columna derecha de la ficha del paciente)
 // y con ctx.frecuentesEn sus diagnósticos y procedimientos frecuentes van aparte, visibles solo mientras el resumen está abierto.
+// ctx.servidor (listas paginadas): { total, resumen, onMas } — el total y el resumen son los reales del servidor,
+// y al final aparece «Ver más» mientras queden atenciones por cargar.
 function histPintar(box, filas, ctx, avisoHtml = '') {
   const entradas = histAgruparCitas(filas);
+  const srv = ctx.servidor;
+  const total = srv ? srv.total : entradas.length;
+  const quedan = srv ? Math.max(0, total - entradas.length) : 0;
   const vista = histVista();
   const boton = (valor, texto) => `<button type="button" class="ht-vista-btn${vista === valor ? ' on' : ''}" data-ht-vista="${valor}" aria-pressed="${vista === valor}">${histIcono(valor, 14)}${texto}</button>`;
   const barra = `<div class="ht-barra">
-      <span class="ht-total">${histPlural(entradas.length, 'atención', 'atenciones')}</span>
+      <span class="ht-total">${histPlural(total, 'atención', 'atenciones')}${quedan ? ` <small>· se muestran las ${formatNumber(entradas.length)} más recientes</small>` : ''}</span>
       <div class="ht-vista" role="group" aria-label="Forma de ver las atenciones">${boton('tabla', 'Tabla')}${boton('tarjetas', 'Tarjetas')}</div>
     </div>`;
-  const resumenHtml = entradas.length > 1 ? histResumenHtml(entradas, ctx) : '';
+  const resumenHtml = total > 1 ? histResumenHtml(entradas, ctx) : '';
   if (ctx.resumenEn) ctx.resumenEn.innerHTML = resumenHtml;
   if (ctx.frecuentesEn) {
-    ctx.frecuentesEn.innerHTML = resumenHtml ? histFrecuentesHtml(entradas) : '';
+    ctx.frecuentesEn.innerHTML = resumenHtml ? histFrecuentesHtml(entradas, ctx) : '';
     ctx.frecuentesEn.hidden = !resumenHtml || !histResumenAbierto();
   }
+  const verMas = quedan && srv.onMas
+    ? `<div class="ht-mas"><button type="button" class="btn btn-secondary" data-ht-mas>Ver ${formatNumber(Math.min(quedan, srv.paso || 20))} más</button><small>Quedan ${histPlural(quedan, 'atención', 'atenciones')}</small></div>`
+    : '';
   box.innerHTML = avisoHtml + (ctx.resumenEn ? '' : resumenHtml) + barra
-    + (vista === 'tabla' ? histTablaHtml(entradas, ctx) : histTimelineHtml(entradas, ctx));
+    + (vista === 'tabla' ? histTablaHtml(entradas, ctx) : histTimelineHtml(entradas, ctx)) + verMas;
+  box.querySelector('[data-ht-mas]')?.addEventListener('click', event => {
+    event.currentTarget.disabled = true;
+    event.currentTarget.textContent = 'Cargando…';
+    srv.onMas();
+  });
   (ctx.resumenEn || box).querySelector('[data-hist-resumen]')?.addEventListener('toggle', event => {
     try { localStorage.setItem(HIST_RESUMEN_CLAVE, event.target.open ? 'abierto' : 'cerrado'); } catch (_) { /* sin almacenamiento */ }
     if (ctx.frecuentesEn) ctx.frecuentesEn.hidden = !event.target.open;

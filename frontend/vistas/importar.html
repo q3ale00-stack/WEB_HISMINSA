@@ -10,16 +10,16 @@
   <!-- Formulario principal: una fila por tipo de archivo, con su modo de importación. -->
   <section class="card import-panel">
     <div class="card-header">
-      <div><div class="card-title">Importación de archivos planos</div><div class="card-subtitle">Elige los archivos con el botón «…» y el modo de cada uno. Solo se importan las filas que tengan archivo.</div></div>
+      <div><div class="card-title">Importación de archivos planos</div><div class="card-subtitle">Elige los archivos (.csv, .txt o .xlsx) con el botón «…» y el modo de cada uno. Solo se importan las filas que tengan archivo. En Excel se lee la primera hoja, con el encabezado en la fila 1.</div></div>
     </div>
     <div class="import-layout">
       <fieldset class="import-fieldset">
-        <legend>Archivos planos CSV</legend>
+        <legend>Archivos CSV o Excel (.xlsx)</legend>
         <div class="import-row" data-row="paciente">
           <label class="import-row-label" for="impFilePaciente">Paciente</label>
           <div class="import-path" id="impPathPaciente" data-empty="true">Ningún archivo seleccionado</div>
-          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePaciente" title="Elegir MaestroPaciente.csv" aria-label="Elegir archivo de pacientes">…</button>
-          <input type="file" id="impFilePaciente" accept=".csv,.txt" data-row="paciente" hidden>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePaciente" title="Elegir MaestroPaciente (.csv o .xlsx)" aria-label="Elegir archivo de pacientes">…</button>
+          <input type="file" id="impFilePaciente" accept=".csv,.txt,.xlsx" data-row="paciente" hidden>
           <select class="select-native import-mode" id="impModoPaciente" aria-label="Modo de importación de Paciente">
             <option value="acumular">Acumular</option>
             <option value="reemplazar">Reemplazar</option>
@@ -28,8 +28,8 @@
         <div class="import-row" data-row="personal">
           <label class="import-row-label" for="impFilePersonal">Personal</label>
           <div class="import-path" id="impPathPersonal" data-empty="true">Ningún archivo seleccionado</div>
-          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePersonal" title="Elegir MaestroPersonal.csv" aria-label="Elegir archivo de personal">…</button>
-          <input type="file" id="impFilePersonal" accept=".csv,.txt" data-row="personal" hidden>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFilePersonal" title="Elegir MaestroPersonal (.csv o .xlsx)" aria-label="Elegir archivo de personal">…</button>
+          <input type="file" id="impFilePersonal" accept=".csv,.txt,.xlsx" data-row="personal" hidden>
           <select class="select-native import-mode" id="impModoPersonal" aria-label="Modo de importación de Personal">
             <option value="acumular">Acumular</option>
             <option value="reemplazar">Reemplazar</option>
@@ -38,8 +38,8 @@
         <div class="import-row" data-row="registrador">
           <label class="import-row-label" for="impFileRegistrador">Registrador</label>
           <div class="import-path" id="impPathRegistrador" data-empty="true">Ningún archivo seleccionado</div>
-          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileRegistrador" title="Elegir MaestroRegistrador.csv" aria-label="Elegir archivo de registradores">…</button>
-          <input type="file" id="impFileRegistrador" accept=".csv,.txt" data-row="registrador" hidden>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileRegistrador" title="Elegir MaestroRegistrador (.csv o .xlsx)" aria-label="Elegir archivo de registradores">…</button>
+          <input type="file" id="impFileRegistrador" accept=".csv,.txt,.xlsx" data-row="registrador" hidden>
           <select class="select-native import-mode" id="impModoRegistrador" aria-label="Modo de importación de Registrador">
             <option value="acumular">Acumular</option>
             <option value="reemplazar">Reemplazar</option>
@@ -48,8 +48,8 @@
         <div class="import-row import-row-nominal" data-row="nominal">
           <label class="import-row-label" for="impFileNominal">Nominal</label>
           <div class="import-path" id="impPathNominal" data-empty="true">Ningún archivo seleccionado</div>
-          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileNominal" title="Elegir los CSV de la trama nominal (puedes elegir varios)" aria-label="Elegir archivos de la trama nominal">…</button>
-          <input type="file" id="impFileNominal" accept=".csv,.txt" data-row="nominal" multiple hidden>
+          <button class="btn btn-secondary import-browse" type="button" data-browse="impFileNominal" title="Elegir los archivos de la trama nominal, .csv o .xlsx (puedes elegir varios)" aria-label="Elegir archivos de la trama nominal">…</button>
+          <input type="file" id="impFileNominal" accept=".csv,.txt,.xlsx" data-row="nominal" multiple hidden>
           <select class="select-native import-mode" id="impModoNominal" aria-label="Modo de importación de Nominal"></select>
         </div>
         <ul class="import-file-list" id="impNominalList" hidden></ul>
