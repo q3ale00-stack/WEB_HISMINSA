@@ -284,6 +284,8 @@ async function buscarPacienteSimple(texto, { limite = PS_LISTA_PASO } = {}) {
     if (seq !== PS.seq) return;
     const hayMas = recibidas.length > limite;
     const filas = recibidas.slice(0, limite);
+    // Total de coincidencias (lo calcula el servidor sobre toda la búsqueda, no solo sobre lo mostrado).
+    const total = Number(recibidas[0]?.Total) || 0;
     PS.sugerencias = filas;
     if (filas.length === 1) { abrirPacienteSimple(filas[0]); return; }
     if (!filas.length) {
@@ -292,10 +294,10 @@ async function buscarPacienteSimple(texto, { limite = PS_LISTA_PASO } = {}) {
       return;
     }
     const puedeVerMas = hayMas && limite < PS_LISTA_MAX;
-    res.innerHTML = `<section class="ps-lista"><h3>${hayMas ? `Mostramos ${filas.length} de muchos pacientes` : `Encontramos ${filas.length} pacientes`}. Elige uno:</h3>
+    res.innerHTML = `<section class="ps-lista"><h3 class="ps-lista-cab"><span>${hayMas ? `Estos son los primeros ${filas.length} pacientes encontrados` : `Encontramos ${filas.length} pacientes`}. Elige uno:</span>${total ? `<span class="ps-lista-total">Total: <strong>${formatNumber(total)}</strong> pacientes</span>` : ''}</h3>
       <ul>${filas.map((p, i) => `<li><button type="button" class="ps-lista-item" data-ps-i="${i}">${psItemPaciente(p)}<span class="ps-chevron" aria-hidden="true">›</span></button></li>`).join('')}</ul>
       ${puedeVerMas ? `<button type="button" class="btn btn-secondary ps-ver-mas" data-ps-mas>Ver ${PS_LISTA_PASO} más</button>` : ''}
-      ${hayMas ? `<p class="ps-tip">Si no aparece, escribe también el apellido${limite >= PS_LISTA_MAX ? ' o usa la Búsqueda avanzada' : ''}.</p>` : ''}</section>`;
+      ${hayMas ? `<p class="ps-tip">Si no aparece, escribe también el apellido${limite >= PS_LISTA_MAX ? ' o usa la Búsqueda con filtros' : ''}.</p>` : ''}</section>`;
     res.querySelectorAll('[data-ps-i]').forEach(b => b.addEventListener('click', () => abrirPacienteSimple(PS.sugerencias[Number(b.dataset.psI)])));
     res.querySelector('[data-ps-mas]')?.addEventListener('click', () => buscarPacienteSimple(valor, { limite: Math.min(PS_LISTA_MAX, limite + PS_LISTA_PASO) }));
   } catch (error) {

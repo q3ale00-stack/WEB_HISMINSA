@@ -6,7 +6,7 @@
 // corre lo que necesita encontrarlas: el código de inicio se registra con alCargarVistas(fn)
 // en lugar de DOMContentLoaded. Se carga antes que los demás scripts.
 
-const VISTAS_VERSION = '20261112-medico-1';
+const VISTAS_VERSION = '20261113-copia-1';
 
 const vistasListas = new Promise((resolve, reject) => {
   const cargar = async () => {

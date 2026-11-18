@@ -1,14 +1,14 @@
 <section id="view-indicadores" class="view ind-view-dashboard">
   <div class="ind-canvas-card">
-    
+
     <!-- Encabezado del Módulo de Indicadores -->
     <header class="ind-canvas-header">
       <div class="ind-header-brand">
         <div class="ind-brand-icon" aria-hidden="true">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M3 3v18h18"/>
-            <path d="M18 9l-5 5-4-4-6 6"/>
-            <circle cx="18" cy="9" r="2.5"/>
+            <path d="M3 3v18h18" />
+            <path d="M18 9l-5 5-4-4-6 6" />
+            <circle cx="18" cy="9" r="2.5" />
           </svg>
         </div>
         <div class="ind-brand-text">
@@ -23,19 +23,29 @@
           <span class="ind-meta-time" id="indLastUpdated">—</span>
         </div>
         <div class="ind-export-group" role="group" aria-label="Exportar Indicador Completo">
-          <button type="button" class="ind-btn-export-excel" onclick="exportarReporteIndicador('excel', this)" title="Exportar reporte completo en Excel (.xlsx) con plantilla oficial del Hospital">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+          <button type="button" class="ind-btn-export-excel" onclick="exportarReporteIndicador('excel', this)"
+            title="Exportar reporte completo en Excel (.xlsx) con plantilla oficial del Hospital">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+              <path d="M14 3v5h5M9 12l4 5M13 12l-4 5" />
+            </svg>
             <span>Excel Completo</span>
           </button>
-          <button type="button" class="ind-btn-export-pdf" onclick="exportarReporteIndicador('pdf', this)" title="Exportar reporte completo en PDF con membrete institucional y métricas">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+          <button type="button" class="ind-btn-export-pdf" onclick="exportarReporteIndicador('pdf', this)"
+            title="Exportar reporte completo en PDF con membrete institucional y métricas">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+              <path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2" />
+            </svg>
             <span>PDF Completo</span>
           </button>
         </div>
         <button type="button" class="ind-reset-btn" onclick="recargarIndicadorActual()" title="Actualizar datos">
           <span>ACTUALIZAR</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            <path d="M23 4v6h-6" />
+            <path d="M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
           </svg>
         </button>
       </div>
@@ -45,20 +55,31 @@
     <div class="ind-selector-bar">
       <div class="ind-selector-row">
         <label class="ind-selector-label" for="indSelectorIndicador">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+          </svg>
           <span>Indicador:</span>
         </label>
-        
+
         <!-- Buscador de texto rápido -->
         <div class="ind-search-wrapper">
-          <svg class="ind-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="indBuscadorTexto" class="ind-search-input-field" 
-                 placeholder="Buscar indicador por número o texto (ej. 14, cáncer, gestante)..." 
-                 oninput="filtrarIndicadoresEnSelector(this.value)" 
-                 onkeydown="manejarEnterBuscadorIndicador(event)"
-                 autocomplete="off">
-          <button type="button" class="ind-search-clear-btn" id="indBtnClearSearch" onclick="limpiarFiltroBuscador()" title="Limpiar búsqueda" style="display:none;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <svg class="ind-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input type="text" id="indBuscadorTexto" class="ind-search-input-field"
+            placeholder="Buscar indicador por número o texto (ej. 14, cáncer, gestante)..."
+            oninput="filtrarIndicadoresEnSelector(this.value)" onkeydown="manejarEnterBuscadorIndicador(event)"
+            autocomplete="off">
+          <button type="button" class="ind-search-clear-btn" id="indBtnClearSearch" onclick="limpiarFiltroBuscador()"
+            title="Limpiar búsqueda" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
@@ -67,12 +88,18 @@
           <select id="indSelectorIndicador" class="ind-select-main" onchange="seleccionarIndicador(this.value)">
             <option value="" selected>— Seleccione un indicador —</option>
           </select>
-          <svg class="ind-select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+          <svg class="ind-select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.5">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </div>
 
         <!-- Botón para quitar selección y volver al estado inicial -->
-        <button type="button" id="indBtnDeseleccionar" class="ind-btn-deseleccionar" onclick="limpiarSeleccionIndicador()" title="Quitar selección y volver a la búsqueda" style="display:none;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <button type="button" id="indBtnDeseleccionar" class="ind-btn-deseleccionar"
+          onclick="limpiarSeleccionIndicador()" title="Quitar selección y volver a la búsqueda" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
           <span>Cambiar</span>
         </button>
       </div>
@@ -82,15 +109,16 @@
     <div id="indSinSeleccionPanel" class="ind-empty-state-panel">
       <div class="ind-hero-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M3 3v18h18"/>
-          <path d="M18 9l-5 5-4-4-6 6"/>
-          <circle cx="18" cy="9" r="2.5"/>
+          <path d="M3 3v18h18" />
+          <path d="M18 9l-5 5-4-4-6 6" />
+          <circle cx="18" cy="9" r="2.5" />
         </svg>
       </div>
       <h3 class="ind-hero-title">Seleccione un Indicador de Gestión y Desempeño</h3>
       <p class="ind-hero-desc">
         Utilice la barra de búsqueda superior o el menú desplegable para elegir el indicador que desea auditar.
-        Visualizará su ficha técnica oficial, métricas de cumplimiento, gráficos analíticos y el padrón nominal detallado.
+        Visualizará su ficha técnica oficial, métricas de cumplimiento, gráficos analíticos y el padrón nominal
+        detallado.
       </p>
 
       <!-- Indicador 14 destacado disponible para análisis -->
@@ -99,10 +127,14 @@
         <div class="ind-quick-card" onclick="seleccionarIndicador('14')">
           <div class="ind-quick-badge">Motor Analítico Activo</div>
           <div class="ind-quick-num">Indicador 14</div>
-          <div class="ind-quick-name">Porcentaje de personas con diagnóstico de cánceres prevalentes (Cuello Uterino, Mama, Próstata, Colon y Recto, Estómago, Piel, Pulmón, Hígado, Linfoma y Leucemia) que inician tratamiento oncológico en ≤ 37 días</div>
+          <div class="ind-quick-name">Porcentaje de personas con diagnóstico de cánceres prevalentes (Cuello Uterino,
+            Mama, Próstata, Colon y Recto, Estómago, Piel, Pulmón, Hígado, Linfoma y Leucemia) que inician tratamiento
+            oncológico en ≤ 37 días</div>
           <div class="ind-quick-btn">
             <span>Abrir Indicador 14</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
       </div>
@@ -115,10 +147,14 @@
     <div class="ind-ficha-tecnica" id="indFichaTecnica" style="display:none;">
       <div class="ind-ficha-badge" id="indTipoBadge">Indicador de desempeño</div>
       <h3 class="ind-ficha-titulo" id="indTitulo">Indicador 14: Tratamiento oportuno de cánceres prevalentes</h3>
-      <p class="ind-ficha-desc" id="indDescripcion">Porcentaje de personas con diagnóstico de cánceres prevalentes (Cuello Uterino, Mama, Próstata, Colon y Recto, Estómago, Piel, Pulmón, Hígado, Linfoma y Leucemia) que inician tratamiento oncológico (quimioterapia o radioterapia o braquiterapia o quirúrgico) en menor o igual a 37 días.</p>
+      <p class="ind-ficha-desc" id="indDescripcion">Porcentaje de personas con diagnóstico de cánceres prevalentes
+        (Cuello Uterino, Mama, Próstata, Colon y Recto, Estómago, Piel, Pulmón, Hígado, Linfoma y Leucemia) que inician
+        tratamiento oncológico (quimioterapia o radioterapia o braquiterapia o quirúrgico) en menor o igual a 37 días.
+      </p>
       <div class="ind-ficha-formula">
         <span class="ind-formula-tag">Fórmula oficial:</span>
-        <span id="indFormulaOficial"><code>Cumplimiento (%) = (Numerador [Tratados ≤ 37 d] / [Denominador - Excluidos]) × 100</code></span>
+        <span
+          id="indFormulaOficial"><code>Cumplimiento (%) = (Numerador [Tratados ≤ 37 d] / [Denominador - Excluidos]) × 100</code></span>
       </div>
     </div>
 
@@ -126,16 +162,20 @@
     <div id="indEnDesarrolloPanel" class="ind-placeholder-card" style="display:none;">
       <div class="ind-placeholder-icon">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          <path
+            d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
         </svg>
       </div>
       <h3>Módulo analítico en desarrollo para este indicador</h3>
-      <p id="indEnDesarrolloMensaje">El catálogo oficial de MAESTRO_HIS_INDICADOR ya incluye este indicador. Cada indicador contará con su propia programación específica. Actualmente está activo y completamente implementado el script del <strong>Indicador 14</strong>.</p>
+      <p id="indEnDesarrolloMensaje">El catálogo oficial de indicadores HIS MINSA ya incluye este indicador. Cada
+        indicador contará con su propia programación específica. Actualmente está activo y completamente implementado el
+        script del <strong>Indicador 14</strong>.</p>
       <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:16px;">
         <button type="button" class="ind-btn-primary" onclick="seleccionarIndicador('14')">
           Ver Indicador 14 (Programación Activa)
         </button>
-        <button type="button" class="ind-btn-deseleccionar" onclick="limpiarSeleccionIndicador()" style="display:inline-flex;">
+        <button type="button" class="ind-btn-deseleccionar" onclick="limpiarSeleccionIndicador()"
+          style="display:inline-flex;">
           Volver a Selección de Indicador
         </button>
       </div>
@@ -146,17 +186,25 @@
 
       <!-- Pestañas de Navegación del Indicador (Gráficos, Vista Ordinal, Vista Nominal) -->
       <div class="ind-tabs-nav" role="tablist">
-        <button type="button" class="ind-tab-btn active" id="tabBtnGraficos" onclick="cambiarSubTabIndicador('graficos')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <button type="button" class="ind-tab-btn active" id="tabBtnGraficos"
+          onclick="cambiarSubTabIndicador('graficos')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 20V10M12 20V4M6 20v-6" />
+          </svg>
           <span>Gráficos y Tablero</span>
         </button>
         <button type="button" class="ind-tab-btn" id="tabBtnOrdinal" onclick="cambiarSubTabIndicador('ordinal')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M3 15h18M9 3v18" />
+          </svg>
           <span>Vista Ordinal (Consolidado Agrupado)</span>
           <span class="ind-tab-badge" id="badgeOrdinalCount">0</span>
         </button>
         <button type="button" class="ind-tab-btn" id="tabBtnNominal" onclick="cambiarSubTabIndicador('nominal')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8" />
+          </svg>
           <span>Vista Nominal (Padrón de Pacientes)</span>
           <span class="ind-tab-badge" id="badgeNominalCount">0</span>
         </button>
@@ -210,7 +258,9 @@
 
         <div class="ind-filter-actions">
           <button type="button" class="ind-btn-filter" onclick="aplicarFiltrosIndicador14()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+            </svg>
             Filtrar
           </button>
           <button type="button" class="ind-btn-ghost" onclick="restablecerFiltrosIndicador14()">
@@ -281,7 +331,7 @@
            ═════════════════════════════════════════════════════════════════ -->
       <div id="subpanelGraficos" class="ind-subpanel active">
         <div class="ind-charts-frame">
-          
+
           <!-- 1. DIAGRAMA DE BARRAS (TOTAL SUMADO PROGRESIVO O MENSUAL) -->
           <div class="ind-chart-box">
             <div class="ind-chart-box-header">
@@ -296,19 +346,27 @@
                 </div>
                 <!-- Botón para mostrar los 2 o solo uno de los datos -->
                 <div class="ind-toggle-group" title="Filtro de serie a mostrar en el diagrama de barras">
-                  <button type="button" class="ind-toggle-btn active" id="btnBarrasAmbos" onclick="cambiarSerieBarras('ambos')">Ver Ambos (2 Barras)</button>
-                  <button type="button" class="ind-toggle-btn" id="btnBarrasCumplen" onclick="cambiarSerieBarras('cumplen')">Solo Tratamiento Oportuno</button>
-                  <button type="button" class="ind-toggle-btn" id="btnBarrasNoCumplen" onclick="cambiarSerieBarras('nocumplen')">Solo Pendientes / Fuera de Plazo</button>
+                  <button type="button" class="ind-toggle-btn active" id="btnBarrasAmbos"
+                    onclick="cambiarSerieBarras('ambos')">Ver Ambos (2 Barras)</button>
+                  <button type="button" class="ind-toggle-btn" id="btnBarrasCumplen"
+                    onclick="cambiarSerieBarras('cumplen')">Solo Tratamiento Oportuno</button>
+                  <button type="button" class="ind-toggle-btn" id="btnBarrasNoCumplen"
+                    onclick="cambiarSerieBarras('nocumplen')">Solo Pendientes / Fuera de Plazo</button>
                 </div>
                 <!-- Alternar entre modo Acumulado y Mensual -->
                 <div class="ind-toggle-group" title="Modo de cálculo temporal">
-                  <button type="button" class="ind-toggle-btn active" id="btnToggleBarrasAcum" onclick="toggleModoBarras('acumulado')">Acumulado</button>
-                  <button type="button" class="ind-toggle-btn" id="btnToggleBarrasMes" onclick="toggleModoBarras('mensual')">Mensual</button>
+                  <button type="button" class="ind-toggle-btn active" id="btnToggleBarrasAcum"
+                    onclick="toggleModoBarras('acumulado')">Acumulado</button>
+                  <button type="button" class="ind-toggle-btn" id="btnToggleBarrasMes"
+                    onclick="toggleModoBarras('mensual')">Mensual</button>
                 </div>
               </div>
             </div>
-            <p class="ind-chart-desc" id="indBarrasDesc">Comparativa mensual mediante barras dobles que permite contrastar directamente a los pacientes con <strong>Tratamiento Oportuno (≤ 37 días)</strong> frente a aquellos <strong>Pendientes o Fuera de Plazo</strong>. Use los botones superiores para ver ambas barras o aislar cada serie.</p>
-            
+            <p class="ind-chart-desc" id="indBarrasDesc">Comparativa mensual mediante barras dobles que permite
+              contrastar directamente a los pacientes con <strong>Tratamiento Oportuno (≤ 37 días)</strong> frente a
+              aquellos <strong>Pendientes o Fuera de Plazo</strong>. Use los botones superiores para ver ambas barras o
+              aislar cada serie.</p>
+
             <div class="ind-chart-canvas-container" id="indBarrasAcumuladasCanvas">
               <div class="ind-loading-state">Calculando totales progresivos del indicador...</div>
             </div>
@@ -331,14 +389,19 @@
                 </div>
                 <!-- Botón para mostrar los 2 o solo uno de los datos en el gráfico de puntos -->
                 <div class="ind-toggle-group" title="Filtro de serie a mostrar en el diagrama de puntos">
-                  <button type="button" class="ind-toggle-btn active" id="btnPuntosAmbos" onclick="cambiarSeriePuntos('ambos')">Ver Ambos</button>
-                  <button type="button" class="ind-toggle-btn" id="btnPuntosCumplen" onclick="cambiarSeriePuntos('cumplen')">Solo Tratamiento Oportuno</button>
-                  <button type="button" class="ind-toggle-btn" id="btnPuntosNoCumplen" onclick="cambiarSeriePuntos('nocumplen')">Solo Casos Diagnosticados</button>
+                  <button type="button" class="ind-toggle-btn active" id="btnPuntosAmbos"
+                    onclick="cambiarSeriePuntos('ambos')">Ver Ambos</button>
+                  <button type="button" class="ind-toggle-btn" id="btnPuntosCumplen"
+                    onclick="cambiarSeriePuntos('cumplen')">Solo Tratamiento Oportuno</button>
+                  <button type="button" class="ind-toggle-btn" id="btnPuntosNoCumplen"
+                    onclick="cambiarSeriePuntos('nocumplen')">Solo Casos Diagnosticados</button>
                 </div>
               </div>
             </div>
-            <p class="ind-chart-desc" id="indPuntosDesc">Evolución mensual continua que contrasta el ritmo de pacientes diagnosticados con cáncer prevalente frente a aquellos que iniciaron tratamiento oncológico oportuno (≤ 37 días).</p>
-            
+            <p class="ind-chart-desc" id="indPuntosDesc">Evolución mensual continua que contrasta el ritmo de pacientes
+              diagnosticados con cáncer prevalente frente a aquellos que iniciaron tratamiento oncológico oportuno (≤ 37
+              días).</p>
+
             <div class="ind-chart-canvas-container" id="indPuntosTendenciaCanvas">
               <div class="ind-loading-state">Trazando puntos mensuales...</div>
             </div>
@@ -358,20 +421,29 @@
               <span class="ind-badge-count" id="badgeOrdinalTotalTable">0 registros</span>
             </div>
             <div class="ind-nominal-actions">
-              <input type="text" id="indOrdinalSearch" class="ind-search-input" placeholder="Filtrar tipo o mes..." oninput="filtrarTablaOrdinal(this.value)">
+              <input type="text" id="indOrdinalSearch" class="ind-search-input" placeholder="Filtrar tipo o mes..."
+                oninput="filtrarTablaOrdinal(this.value)">
               <div class="ind-export-group" role="group" aria-label="Exportar Vista Ordinal">
-                <button type="button" class="ind-btn-export-excel" onclick="exportarVistaOrdinal('excel', this)" title="Exportar tabla ordinal en Excel (.xlsx) con plantilla oficial">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+                <button type="button" class="ind-btn-export-excel" onclick="exportarVistaOrdinal('excel', this)"
+                  title="Exportar tabla ordinal en Excel (.xlsx) con plantilla oficial">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+                    <path d="M14 3v5h5M9 12l4 5M13 12l-4 5" />
+                  </svg>
                   <span>Excel</span>
                 </button>
-                <button type="button" class="ind-btn-export-pdf" onclick="exportarVistaOrdinal('pdf', this)" title="Exportar tabla ordinal en PDF con membrete oficial">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+                <button type="button" class="ind-btn-export-pdf" onclick="exportarVistaOrdinal('pdf', this)"
+                  title="Exportar tabla ordinal en PDF con membrete oficial">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+                    <path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2" />
+                  </svg>
                   <span>PDF</span>
                 </button>
               </div>
             </div>
           </div>
-          
+
           <div class="ind-table-container">
             <table class="ind-table" id="indOrdinalTable">
               <thead>
@@ -418,20 +490,29 @@
                 <option value="NO_CUMPLE">Pendientes / Fuera de Plazo</option>
                 <option value="EXCLUIDO">Excluidos (Paliativo / Defunción)</option>
               </select>
-              <input type="text" id="indNominalSearch" class="ind-search-input" placeholder="Buscar por DNI o paciente..." oninput="filtrarPadronNominal()">
+              <input type="text" id="indNominalSearch" class="ind-search-input"
+                placeholder="Buscar por DNI o paciente..." oninput="filtrarPadronNominal()">
               <div class="ind-export-group" role="group" aria-label="Exportar Padrón Nominal">
-                <button type="button" class="ind-btn-export-excel" onclick="exportarVistaNominal('excel', this)" title="Exportar padrón nominal a Excel (.xlsx) con plantilla oficial">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>
+                <button type="button" class="ind-btn-export-excel" onclick="exportarVistaNominal('excel', this)"
+                  title="Exportar padrón nominal a Excel (.xlsx) con plantilla oficial">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+                    <path d="M14 3v5h5M9 12l4 5M13 12l-4 5" />
+                  </svg>
                   <span>Excel</span>
                 </button>
-                <button type="button" class="ind-btn-export-pdf" onclick="exportarVistaNominal('pdf', this)" title="Exportar padrón nominal a PDF con membrete oficial">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2"/></svg>
+                <button type="button" class="ind-btn-export-pdf" onclick="exportarVistaNominal('pdf', this)"
+                  title="Exportar padrón nominal a PDF con membrete oficial">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+                    <path d="M14 3v5h5M9 13h1.5a1.5 1.5 0 010 3H9v-3zm0 3v2" />
+                  </svg>
                   <span>PDF</span>
                 </button>
               </div>
             </div>
           </div>
-          
+
           <div class="ind-table-container">
             <table class="ind-table" id="indNominalTable">
               <thead>
@@ -445,10 +526,12 @@
                   <th>Género</th>
                   <th>Cáncer</th>
                   <th>F. Diagnóstico</th>
-                  <th title="Fecha límite máxima para inicio oportuno (37 días calendario posteriores al diagnóstico)">F. Límite Oportuna</th>
+                  <th title="Fecha límite máxima para inicio oportuno (37 días calendario posteriores al diagnóstico)">
+                    F. Límite Oportuna</th>
                   <th>F. Tratamiento</th>
                   <th title="Días transcurridos entre el diagnóstico y el primer tratamiento">Días Tratam.</th>
-                  <th title="Días restantes de vigencia para cumplir el tratamiento dentro de los 37 días de plazo">Plazo Restante</th>
+                  <th title="Días restantes de vigencia para cumplir el tratamiento dentro de los 37 días de plazo">
+                    Plazo Restante</th>
                   <th>Excluye</th>
                   <th>Den</th>
                   <th>Num</th>

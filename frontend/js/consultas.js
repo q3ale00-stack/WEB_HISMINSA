@@ -7,13 +7,13 @@
 // currentQueryResult y currentFilteredRows.
 
 const CX_MEDIDAS = [
-  { valor: 'pacientesUnicos', nombre: 'Pacientes (personas distintas)' },
-  { valor: 'atenciones', nombre: 'Citas atendidas' },
-  { valor: 'registros', nombre: 'Registros HIS (ítems y diagnósticos)' },
-  { valor: 'codigosUnicos', nombre: 'Códigos CIE / CPMS distintos' }
+  { valor: 'pacientesUnicos', nombre: 'Número de pacientes distintos' },
+  { valor: 'atenciones', nombre: 'Número de citas atendidas' },
+  { valor: 'registros', nombre: 'Diagnósticos y procedimientos registrados' },
+  { valor: 'codigosUnicos', nombre: 'Códigos CIE-10 / CPMS distintos' }
 ];
 const CX_MEDIDAS_EXTRA = [
-  ['avgEdad', 'Edad promedio'], ['avgHemoglobina', 'Hemoglobina promedio'], ['maxHemoglobina', 'Hemoglobina máxima'],
+  ['avgEdad', 'Edad promedio (años)'], ['avgHemoglobina', 'Hemoglobina promedio'], ['maxHemoglobina', 'Hemoglobina máxima'],
   ['avgPeso', 'Peso promedio'], ['maxPeso', 'Peso máximo'], ['avgTalla', 'Talla promedio'], ['maxTalla', 'Talla máxima'],
   ['sumLab', 'Suma de valores LAB'], ['avgLab', 'Promedio de valores LAB']
 ];
@@ -22,12 +22,12 @@ const CX_GRUPOS = [
   ['mes', 'Mes'], ['nombrePaciente', 'Paciente'], ['documento', 'DNI / documento'], ['tipoDiagnostico', 'Tipo de diagnóstico']
 ];
 const CX_GRUPOS_MAS = [
-  ['codigoHIS', 'Código HIS'], ['dia', 'Día'], ['año', 'Año'], ['sexo', 'Sexo'], ['financiador', 'Financiador'],
+  ['codigoHIS', 'Código CIE-10 / CPMS'], ['dia', 'Día'], ['año', 'Año'], ['sexo', 'Sexo'], ['financiador', 'Financiador'],
   ['departamento', 'Departamento'], ['provincia', 'Provincia'], ['idPaciente', 'ID del paciente']
 ];
 const CX_SUGERENCIAS = [['F32', 'Depresión'], ['F41', 'Ansiedad'], ['D50', 'Anemia'], ['I10', 'Hipertensión'], ['E11', 'Diabetes']];
 const CX_CAMPOS = [
-  ['codigoHIS', 'Código HIS', 'string'], ['diagnostico', 'Diagnóstico', 'string'], ['tipoDiagnostico', 'Tipo de diagnóstico HIS', 'string'],
+  ['codigoHIS', 'Código CIE-10 / CPMS', 'string'], ['diagnostico', 'Diagnóstico', 'string'], ['tipoDiagnostico', 'Tipo de diagnóstico', 'string'],
   ['fechaAtencion', 'Fecha de atención', 'date'], ['establecimiento', 'Establecimiento', 'string'], ['departamento', 'Departamento', 'string'],
   ['provincia', 'Provincia', 'string'], ['ups', 'UPS / servicio', 'string'], ['profesional', 'Profesional', 'string'], ['financiador', 'Financiador', 'string'],
   ['sexo', 'Sexo', 'string'], ['edad', 'Edad', 'number'], ['valorLab', 'Valor LAB', 'number'], ['peso', 'Peso', 'number'], ['talla', 'Talla', 'number'],
@@ -72,7 +72,8 @@ const CX = {
   porPagina: 25,
   graficoVisible: true,
   pestana: null,
-  secuencia: 0
+  secuencia: 0,
+  filtrosTabla: {}
 };
 
 const cxEl = id => document.getElementById(id);
@@ -151,7 +152,7 @@ function cxPintarFormulario(items = []) {
 const cxSeccionDeCampo = campo => String(CX_SECCIONES.findIndex(([, campos]) => campos.includes(campo)));
 
 function cxPintarPestanas(cuentas = {}) {
-  const pestanas = [...CX_SECCIONES.map(([titulo], i) => [String(i), titulo, `cxSeccion${i}`]), ['bloques', 'Combinaciones Y / O', 'cxSeccionBloques']];
+  const pestanas = [...CX_SECCIONES.map(([titulo], i) => [String(i), titulo, `cxSeccion${i}`]), ['bloques', 'Búsqueda avanzada (Y / O)', 'cxSeccionBloques']];
   cxEl('cxPestanas').innerHTML = pestanas.map(([id, titulo, panel]) => {
     const activa = CX.pestana === id;
     const n = cuentas[id] || 0;
@@ -204,17 +205,17 @@ function cxBloqueHtml(b = {}) {
   const items = b.items?.length ? b.items : [{}];
   return `<div class="cx-bloque">
     <div class="cx-bloque-cabecera">
-      <label class="cx-campo"><span>Dónde se evalúa</span>
-        <select class="select-native cx-b-ambito">${cxOpciones([['cita', 'En la misma cita'], ['paciente', 'En el mismo paciente'], ['registro', 'En la misma fila HIS']], b.scope || 'cita')}</select>
+      <label class="cx-campo"><span>Dónde buscar</span>
+        <select class="select-native cx-b-ambito">${cxOpciones([['cita', 'En la misma cita'], ['paciente', 'En el mismo paciente'], ['registro', 'En el mismo diagnóstico / procedimiento']], b.scope || 'cita')}</select>
       </label>
-      <label class="cx-campo cx-b-regla"><span>Debe cumplir</span>
-        <select class="select-native cx-b-modo">${cxOpciones([['AND', 'Todos los criterios (Y)'], ['OR', 'Al menos uno (O)']], b.mode || 'AND')}</select>
+      <label class="cx-campo cx-b-regla"><span>Condición</span>
+        <select class="select-native cx-b-modo">${cxOpciones([['AND', 'Todas las condiciones (Y)'], ['OR', 'Cualquiera de estas (O)']], b.mode || 'AND')}</select>
       </label>
-      <button type="button" class="cx-quitar" data-cx-quitar-bloque aria-label="Quitar bloque" title="Quitar bloque">×</button>
+      <button type="button" class="cx-quitar" data-cx-quitar-bloque aria-label="Quitar grupo" title="Quitar grupo">×</button>
     </div>
     <div class="cx-b-filas">${items.map(cxFilaHtml).join('')}</div>
-    <button type="button" class="cx-mas" data-cx-agregar-fila>+ Agregar criterio</button>
-    <label class="cx-conector"><span>Con el bloque siguiente:</span>
+    <button type="button" class="cx-mas" data-cx-agregar-fila>+ Agregar condición</button>
+    <label class="cx-conector"><span>Con el grupo siguiente:</span>
       <select class="select-native cx-b-siguiente">${cxOpciones([['AND', 'Y además'], ['OR', 'O bien']], b.nextMode || 'AND')}</select>
     </label>
   </div>`;
@@ -292,7 +293,7 @@ function cxPintarGrupos() {
     b.setAttribute('aria-pressed', String(activo));
   });
   const nombres = [...CX.grupos].map(cxNombreGrupo);
-  cxEl('cxGruposResumen').textContent = nombres.length ? nombres.join(', ') : 'Sin agrupar';
+  cxEl('cxGruposResumen').textContent = nombres.length ? nombres.join(', ') : 'Total general (sin dividir)';
 }
 
 function cxActualizarFrase() {
@@ -301,7 +302,7 @@ function cxActualizarFrase() {
   const items = formulario ? formulario.items : [];
   const enBloques = cxLeerBloques().reduce((t, b) => t + b.items.length, 0);
   const total = items.length + enBloques;
-  CX.frase = `${cxNombreMedida(CX.medida)}${grupos ? ` por ${grupos}` : ', sin agrupar'} ${cxTextoPeriodo()}${total ? `, con ${total} ${total === 1 ? 'filtro' : 'filtros'}` : ''}.`;
+  CX.frase = `Mostrando: ${cxNombreMedida(CX.medida).toLowerCase()}${grupos ? `, organizado por ${grupos}` : ', en total general'}, ${cxTextoPeriodo()}${total ? `, con ${total} ${total === 1 ? 'filtro' : 'filtros'}` : ''}.`;
   cxEl('cxFrase').textContent = CX.frase;
 
   // Cuántos filtros hay en cada pestaña y una ficha por cada uno, para verlos con las pestañas cerradas.
@@ -310,10 +311,10 @@ function cxActualizarFrase() {
   cxPintarPestanas(cuentas);
   cxEl('cxChips').innerHTML = [
     ...items.map(f => `<span class="cx-chip"><button type="button" class="cx-chip-texto" data-cx-pestana-ir="${cxSeccionDeCampo(f.field)}" title="Editar">${esc(cxTextoFiltro(f))}</button><button type="button" class="cx-chip-quitar" data-cx-quitar-filtro="${esc(f.field)}" aria-label="Quitar filtro ${esc(cxTextoFiltro(f))}">×</button></span>`),
-    enBloques ? `<span class="cx-chip"><button type="button" class="cx-chip-texto" data-cx-pestana-ir="bloques" title="Editar">${enBloques} ${enBloques === 1 ? 'criterio' : 'criterios'} en combinaciones Y / O</button></span>` : ''
+    enBloques ? `<span class="cx-chip"><button type="button" class="cx-chip-texto" data-cx-pestana-ir="bloques" title="Editar">${enBloques} ${enBloques === 1 ? 'condición' : 'condiciones'} en búsqueda avanzada (Y / O)</button></span>` : ''
   ].join('');
   cxEl('cxActivos').hidden = !total;
-  const ambito = { cita: 'misma cita', paciente: 'mismo paciente', registro: 'misma fila HIS' }[cxEl('cxFormAmbito').value];
+  const ambito = { cita: 'en la misma cita', paciente: 'en el mismo paciente', registro: 'en el mismo dx/proc.' }[cxEl('cxFormAmbito').value];
   cxEl('cxReglasResumen').textContent = `${ambito} · ${cxEl('cxFormModo').value === 'OR' ? 'al menos uno' : 'todos'}`;
 }
 
@@ -388,6 +389,7 @@ function cxPintarResultados(datos) {
   cxEl('cxInsignia').textContent = `solo las primeras ${formatNumber(datos.rowLimit)}`;
   cxEl('cxInsignia').hidden = !datos.truncated;
   cxEl('cxBuscar').value = '';
+  CX.filtrosTabla = {};
   if (datos.truncated) showAlert(`Se muestran los primeros ${formatNumber(datos.rowLimit)} grupos. Acota los filtros para ver el resto.`, 'info');
 
   const duplicada = { pacientesUnicos: 'pacientes', atenciones: 'atenciones', registros: 'registros' }[datos.measure];
@@ -397,6 +399,7 @@ function cxPintarResultados(datos) {
   CX.orden = temporal ? datos.groupBy[0] : 'total';
   CX.ordenAsc = temporal;
   CX.pagina = 1;
+  cxActualizarEstadoBuscador();
   cxOrdenar();
   cxPintarGrafico(datos);
 }
@@ -466,34 +469,176 @@ function cxPintarTabla() {
     <button type="button" class="btn btn-secondary btn-sm" data-cx-pagina="${CX.pagina + 1}"${CX.pagina >= paginas ? ' disabled' : ''}>Siguiente</button></div>`;
 }
 
-// Barras horizontales para categorías (etiquetas largas legibles); columnas para una sola dimensión de tiempo.
+// Explorador analítico y filtros interactivos: aporta resúmenes por dimensión, concentración e indicadores en lugar de repetir la tabla.
+function cxEtiquetaFaceta(campo, valorCrudo) {
+  if (valorCrudo === '__EMPTY__') return 'Sin dato';
+  if (campo === 'tipoDiagnostico') {
+    const mapa = { D: 'D · Definitivo', P: 'P · Presuntivo', R: 'R · Repetido' };
+    return mapa[valorCrudo] || valorCrudo;
+  }
+  return cxValorCelda(campo, valorCrudo);
+}
+
+function cxActualizarEstadoBuscador() {
+  const q = cxEl('cxBuscar').value.trim();
+  const activos = Object.entries(CX.filtrosTabla);
+  const hayFiltro = Boolean(q || activos.length);
+  const estado = cxEl('cxBuscarEstado');
+  const limpiar = cxEl('cxLimpiarTabla');
+  const chips = cxEl('cxFiltrosTabla');
+  if (estado) {
+    estado.hidden = !hayFiltro;
+    estado.textContent = hayFiltro ? `${formatNumber(currentFilteredRows.length)} de ${formatNumber(CX.filas.length)} filas` : '';
+  }
+  if (limpiar) limpiar.hidden = !hayFiltro;
+  if (chips) {
+    chips.hidden = !activos.length;
+    chips.innerHTML = activos.map(([campo, val]) => `<span class="cx-chip"><span>${esc(cxNombreGrupo(campo))}: <strong>${esc(cxEtiquetaFaceta(campo, val))}</strong></span><button type="button" class="cx-chip-quitar" data-cx-quitar-faceta="${esc(campo)}" aria-label="Quitar filtro">×</button></span>`).join('');
+  }
+}
+
+function cxAplicarFiltrosTabla() {
+  const terminos = cxEl('cxBuscar').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const facetas = Object.entries(CX.filtrosTabla);
+  currentFilteredRows = CX.filas.filter(fila => {
+    for (const [campo, val] of facetas) {
+      const crudo = fila[campo];
+      const norm = crudo === null || crudo === undefined || crudo === '' ? '__EMPTY__' : String(crudo);
+      if (norm !== val) return false;
+    }
+    if (terminos.length) {
+      const textoFila = Object.values(fila).filter(v => v !== null && v !== undefined).map(v => String(v).toLowerCase()).join(' ');
+      if (!terminos.every(t => textoFila.includes(t))) return false;
+    }
+    return true;
+  });
+  CX.pagina = 1;
+  cxActualizarEstadoBuscador();
+  cxOrdenar();
+  if (currentQueryResult) cxPintarGrafico(currentQueryResult);
+}
+
+function cxToggleFiltroTabla(campo, valor) {
+  if (CX.filtrosTabla[campo] === valor) delete CX.filtrosTabla[campo];
+  else CX.filtrosTabla[campo] = valor;
+  cxAplicarFiltrosTabla();
+}
+
 function cxPintarGrafico(datos) {
   const caja = cxEl('cxGrafico');
   const grupos = datos.groupBy || [];
   const filas = CX.filas.filter(f => f.total !== null && f.total !== undefined);
-  if (!filas.length) { caja.innerHTML = '<div class="table-empty">No hay datos para graficar.</div>'; return; }
-  if (!grupos.length) { caja.innerHTML = '<div class="table-empty">Elige cómo organizarla para ver la distribución.</div>'; return; }
-  const etiqueta = f => grupos.map(g => cxValorCelda(g, f[g]) === '—' ? 'Sin dato' : cxValorCelda(g, f[g])).join(' · ');
+  if (!filas.length) { caja.innerHTML = '<div class="table-empty">No hay datos para analizar.</div>'; return; }
+  if (!grupos.length) { caja.innerHTML = '<div class="table-empty">Elige «Ver resultados por» para desglosar y explorar la distribución.</div>'; return; }
   const medida = cxNombreMedida(datos.measure);
+  const esPromedio = datos.measure.startsWith('avg') || datos.measure.startsWith('max');
 
+  // 1) Serie temporal (mes, día, año): indicadores de tendencia + columnas clicables.
   if (grupos.length === 1 && CX_TEMPORALES.includes(grupos[0])) {
-    const serie = [...filas].sort((a, b) => String(a[grupos[0]]).localeCompare(String(b[grupos[0]]), 'es', { numeric: true })).slice(-24);
+    const campo = grupos[0];
+    const serie = [...filas].sort((a, b) => String(a[campo]).localeCompare(String(b[campo]), 'es', { numeric: true })).slice(-24);
     const max = Math.max(...serie.map(f => Number(f.total)), 1);
     const alto = serie.reduce((m, f, i) => (Number(f.total) > Number(serie[m].total) ? i : m), 0);
-    caja.innerHTML = `<h4 class="cx-graf-titulo">${esc(medida)} por ${esc(cxNombreGrupo(grupos[0]).toLowerCase())}</h4>
-      <div class="cx-columnas">${serie.map((f, i) => `<div class="cx-col" title="${esc(`${etiqueta(f)}: ${formatNumber(f.total)}`)}">
-        <span class="cx-col-valor">${i === alto || i === serie.length - 1 ? esc(formatNumber(f.total)) : ''}</span>
-        <span class="cx-col-barra"><i style="height:${Math.max(1, Number(f.total) / max * 100)}%"></i></span>
-        <span class="cx-col-etq">${esc(etiqueta(f))}</span></div>`).join('')}</div>`;
+    const promedio = serie.reduce((s, f) => s + Number(f.total), 0) / serie.length;
+    const ultimo = serie[serie.length - 1];
+    const etq = f => cxValorCelda(campo, f[campo]);
+    caja.innerHTML = `
+      <div class="cx-insights">
+        <div class="cx-insight-card"><span class="cx-insight-etq">Periodos analizados</span><strong class="cx-insight-val">${formatNumber(filas.length)}</strong><span class="cx-insight-sub">Mostrando últimos ${serie.length}</span></div>
+        <div class="cx-insight-card"><span class="cx-insight-etq">Pico máximo</span><strong class="cx-insight-val">${esc(formatNumber(serie[alto].total))}</strong><span class="cx-insight-sub">${esc(etq(serie[alto]))}</span></div>
+        <div class="cx-insight-card"><span class="cx-insight-etq">Promedio por periodo</span><strong class="cx-insight-val">${esc(formatNumber(Math.round(promedio * 10) / 10))}</strong><span class="cx-insight-sub">${esc(medida)}</span></div>
+        <div class="cx-insight-card"><span class="cx-insight-etq">Último periodo (${esc(etq(ultimo))})</span><strong class="cx-insight-val">${esc(formatNumber(ultimo.total))}</strong><span class="cx-insight-sub">Haz clic en una barra para filtrar</span></div>
+      </div>
+      <h4 class="cx-graf-titulo">Evolución de ${esc(medida.toLowerCase())} por ${esc(cxNombreGrupo(campo).toLowerCase())}</h4>
+      <div class="cx-columnas">${serie.map((f, i) => {
+        const valRaw = f[campo] === null || f[campo] === undefined || f[campo] === '' ? '__EMPTY__' : String(f[campo]);
+        const activa = CX.filtrosTabla[campo] === valRaw;
+        return `<button type="button" class="cx-col${activa ? ' active' : ''}" data-cx-faceta="${esc(campo)}" data-cx-valor="${esc(valRaw)}" title="${esc(`${etq(f)}: ${formatNumber(f.total)} (clic para filtrar)`)}" style="border:0;background:transparent;font:inherit;">
+          <span class="cx-col-valor">${i === alto || i === serie.length - 1 ? esc(formatNumber(f.total)) : ''}</span>
+          <span class="cx-col-barra"><i style="height:${Math.max(1, Number(f.total) / max * 100)}%"></i></span>
+          <span class="cx-col-etq">${esc(etq(f))}</span></button>`;
+      }).join('')}</div>`;
     return;
   }
-  const mayores = [...filas].sort((a, b) => Number(b.total) - Number(a.total)).slice(0, 10);
+
+  // 2) Múltiples dimensiones: desglose independiente por cada dimensión (facetas clicables para filtrar la tabla).
+  if (grupos.length > 1) {
+    const dimensiones = grupos.slice(0, 4);
+    const usarRegistros = esPromedio || datos.measure === 'pacientesUnicos' || datos.measure === 'codigosUnicos';
+    const metricaCol = usarRegistros && filas[0].atenciones !== undefined ? 'atenciones' : 'total';
+    const etiquetaMetrica = metricaCol === 'atenciones' ? 'citas' : medida.toLowerCase();
+
+    const tarjetas = dimensiones.map(campo => {
+      const mapa = new Map();
+      let sumaTotal = 0;
+      filas.forEach(f => {
+        const valRaw = f[campo] === null || f[campo] === undefined || f[campo] === '' ? '__EMPTY__' : String(f[campo]);
+        const peso = Number(f[metricaCol]) || 0;
+        sumaTotal += peso;
+        mapa.set(valRaw, (mapa.get(valRaw) || 0) + peso);
+      });
+      const ordenados = [...mapa.entries()].sort((a, b) => b[1] - a[1]);
+      const top = ordenados.slice(0, 6);
+      const maxVal = Math.max(...top.map(([, v]) => v), 1);
+      return `<div class="cx-faceta-card">
+        <h5 class="cx-faceta-titulo">${esc(cxNombreGrupo(campo))} <span>${formatNumber(ordenados.length)} distintos</span></h5>
+        <div class="cx-faceta-lista">
+          ${top.map(([valRaw, suma]) => {
+            const pct = sumaTotal > 0 ? Math.round((suma / sumaTotal) * 1000) / 10 : 0;
+            const activa = CX.filtrosTabla[campo] === valRaw;
+            return `<button type="button" class="cx-faceta-item${activa ? ' active' : ''}" data-cx-faceta="${esc(campo)}" data-cx-valor="${esc(valRaw)}" title="Clic para filtrar la tabla por ${esc(cxEtiquetaFaceta(campo, valRaw))}">
+              <span class="cx-faceta-nombre">${esc(cxEtiquetaFaceta(campo, valRaw))}</span>
+              <span class="cx-faceta-num"><strong>${esc(formatNumber(suma))}</strong> (${pct}%)</span>
+              <span class="cx-faceta-pista"><i style="width:${Math.max(2, (suma / maxVal) * 100)}%"></i></span>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+
+    caja.innerHTML = `
+      <div class="cx-facetas-cabecera">
+        <h4 class="cx-graf-titulo">Resumen interactivo por dimensión (${esc(etiquetaMetrica)})</h4>
+        <span class="cx-facetas-ayuda">Haz clic en cualquier elemento para filtrar la tabla de abajo</span>
+      </div>
+      <div class="cx-facetas">${tarjetas}</div>`;
+    return;
+  }
+
+  // 3) Una sola dimensión no temporal: indicadores de concentración + distribución clicable con porcentaje.
+  const campo = grupos[0];
+  const ordenados = [...filas].sort((a, b) => Number(b.total) - Number(a.total));
+  const sumaFilas = ordenados.reduce((s, f) => s + Number(f.total), 0);
+  const top5Suma = ordenados.slice(0, 5).reduce((s, f) => s + Number(f.total), 0);
+  const concTop5 = sumaFilas > 0 ? Math.round((top5Suma / sumaFilas) * 1000) / 10 : 0;
+  const promedio = sumaFilas / ordenados.length;
+  const s = datos.summary || {};
+  const ratioClinico = s.atenciones && s.pacientes
+    ? `${(Number(s.atenciones) / Number(s.pacientes)).toFixed(2)} citas/paciente`
+    : (s.registros && s.atenciones ? `${(Number(s.registros) / Number(s.atenciones)).toFixed(2)} ítems/cita` : '—');
+  const mayores = ordenados.slice(0, 8);
   const max = Math.max(...mayores.map(f => Number(f.total)), 1);
-  caja.innerHTML = `<h4 class="cx-graf-titulo">${esc(medida)}: ${filas.length > 10 ? `los 10 mayores de ${formatNumber(filas.length)}` : 'distribución'}</h4>
-    <div class="cx-barras">${mayores.map(f => `<div class="cx-barra" title="${esc(`${etiqueta(f)}: ${formatNumber(f.total)}`)}">
-      <span class="cx-barra-etq">${esc(etiqueta(f))}</span>
-      <span class="cx-barra-pista"><i style="width:${Math.max(0.5, Number(f.total) / max * 100)}%"></i></span>
-      <strong>${esc(formatNumber(f.total))}</strong></div>`).join('')}</div>`;
+
+  caja.innerHTML = `
+    <div class="cx-insights">
+      <div class="cx-insight-card"><span class="cx-insight-etq">Categorías encontradas</span><strong class="cx-insight-val">${formatNumber(ordenados.length)}</strong><span class="cx-insight-sub">${esc(cxNombreGrupo(campo))}</span></div>
+      <div class="cx-insight-card"><span class="cx-insight-etq">Concentración Top 5</span><strong class="cx-insight-val">${esPromedio ? '—' : `${concTop5}%`}</strong><span class="cx-insight-sub">${esPromedio ? 'No aplica a promedios' : 'Peso de los 5 mayores'}</span></div>
+      <div class="cx-insight-card"><span class="cx-insight-etq">Promedio por categoría</span><strong class="cx-insight-val">${esc(formatNumber(Math.round(promedio * 10) / 10))}</strong><span class="cx-insight-sub">${esc(medida)}</span></div>
+      <div class="cx-insight-card"><span class="cx-insight-etq">Intensidad clínica</span><strong class="cx-insight-val">${esc(ratioClinico)}</strong><span class="cx-insight-sub">${s.registros && s.atenciones ? `${(Number(s.registros) / Number(s.atenciones)).toFixed(1)} dx/proc. por cita` : 'Promedio general'}</span></div>
+    </div>
+    <div class="cx-facetas-cabecera">
+      <h4 class="cx-graf-titulo">${esc(medida)}: los ${mayores.length} mayores (clic para filtrar)</h4>
+    </div>
+    <div class="cx-barras">${mayores.map(f => {
+      const valRaw = f[campo] === null || f[campo] === undefined || f[campo] === '' ? '__EMPTY__' : String(f[campo]);
+      const etq = cxEtiquetaFaceta(campo, valRaw);
+      const pct = !esPromedio && sumaFilas > 0 ? ` · ${Math.round((Number(f.total) / sumaFilas) * 1000) / 10}%` : '';
+      const activa = CX.filtrosTabla[campo] === valRaw;
+      return `<button type="button" class="cx-barra${activa ? ' active' : ''}" data-cx-faceta="${esc(campo)}" data-cx-valor="${esc(valRaw)}" title="${esc(`${etq}: ${formatNumber(f.total)}${pct} (clic para filtrar)`)}">
+        <span class="cx-barra-etq">${esc(etq)}</span>
+        <span class="cx-barra-pista"><i style="width:${Math.max(0.5, Number(f.total) / max * 100)}%"></i></span>
+        <strong>${esc(formatNumber(f.total))}${esc(pct)}</strong></button>`;
+    }).join('')}</div>`;
 }
 
 function cxAbrirDesdeTabla(boton, evento) {
@@ -590,15 +735,15 @@ function cxExportar(formato, boton) {
     archivo: 'consulta-produccion',
     datos: [
       ['Consulta', r.frase || null],
-      ['Medida', medida], ['Agrupado por', (r.groupBy || []).map(cxNombreGrupo).join(', ') || 'Sin agrupar'],
+      ['Qué se calcula', medida], ['Organizado por', (r.groupBy || []).map(cxNombreGrupo).join(', ') || 'Total general'],
       ['Desde', r.period?.start ? formatIsoDate(r.period.start) : 'Todos los registros'], ['Hasta', r.period?.end ? formatIsoDate(r.period.end) : null],
       ['Buscar en la tabla', gv('cxBuscar') || null], ['Filas', formatNumber(currentFilteredRows.length)]
     ],
     metricas: [
       { etiqueta: medida, valor: s.total },
-      r.measure === 'registros' ? null : { etiqueta: 'Registros HIS', valor: s.registros },
-      r.measure === 'atenciones' ? null : { etiqueta: 'Citas únicas', valor: s.atenciones },
-      r.measure === 'pacientesUnicos' ? null : { etiqueta: 'Pacientes únicos', valor: s.pacientes }
+      r.measure === 'registros' ? null : { etiqueta: 'Ítems clínicos (dx/proc.)', valor: s.registros },
+      r.measure === 'atenciones' ? null : { etiqueta: 'Citas atendidas', valor: s.atenciones },
+      r.measure === 'pacientesUnicos' ? null : { etiqueta: 'Pacientes distintos', valor: s.pacientes }
     ].filter(m => m && m.valor !== null && m.valor !== undefined),
     secciones: [{
       titulo: 'Resultado',
@@ -655,7 +800,7 @@ alCargarVistas(() => {
   if (!cxEl('cxPanel')) return;
   const opcion = (atributo, v, t) => `<button type="button" class="cx-opcion" ${atributo}="${esc(v)}">${esc(t)}</button>`;
   cxEl('cxRapidas').innerHTML = CX_RAPIDAS.map((r, i) => `<button type="button" class="cx-rapida" data-cx-rapida="${i}">${esc(r.nombre)}</button>`).join('');
-  cxEl('cxMedida').innerHTML = `<optgroup label="Contar">${cxOpciones(CX_MEDIDAS.map(m => [m.valor, m.nombre]))}</optgroup><optgroup label="Promedios, máximos y sumas">${cxOpciones(CX_MEDIDAS_EXTRA)}</optgroup>`;
+  cxEl('cxMedida').innerHTML = `<optgroup label="Contar pacientes, citas o diagnósticos">${cxOpciones(CX_MEDIDAS.map(m => [m.valor, m.nombre]))}</optgroup><optgroup label="Calcular promedios, máximos o sumas">${cxOpciones(CX_MEDIDAS_EXTRA)}</optgroup>`;
   cxEl('cxGrupos').innerHTML = [...CX_GRUPOS, ...CX_GRUPOS_MAS].map(([v, t]) => opcion('data-cx-grupo', v, t)).join('');
   cxEl('cxPeriodo').innerHTML = cxOpciones(cxOpcionesPeriodo());
   cxPintarMedida();
@@ -680,10 +825,7 @@ alCargarVistas(() => {
   const vista = cxEl('view-consultas');
   vista.addEventListener('input', e => {
     if (e.target.id === 'cxBuscar') {
-      const q = e.target.value.trim().toLowerCase();
-      currentFilteredRows = q ? CX.filas.filter(f => Object.values(f).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q))) : [...CX.filas];
-      CX.pagina = 1;
-      cxOrdenar();
+      cxAplicarFiltrosTabla();
       return;
     }
     if (cxEl('cxPanel').contains(e.target)) cxActualizarFrase();
@@ -766,8 +908,14 @@ alCargarVistas(() => {
     const pagina = t.closest('[data-cx-pagina]');
     if (pagina && !pagina.disabled) { CX.pagina = Number(pagina.dataset.cxPagina); cxPintarTabla(); return; }
     const abrir = t.closest('[data-cx-abrir]');
-    if (abrir) cxAbrirDesdeTabla(abrir, e);
+    if (abrir) { cxAbrirDesdeTabla(abrir, e); return; }
+    const faceta = t.closest('[data-cx-faceta]');
+    if (faceta) { cxToggleFiltroTabla(faceta.dataset.cxFaceta, faceta.dataset.cxValor); return; }
+    const quitarFaceta = t.closest('[data-cx-quitar-faceta]');
+    if (quitarFaceta) { delete CX.filtrosTabla[quitarFaceta.dataset.cxQuitarFaceta]; cxAplicarFiltrosTabla(); }
   });
+
+  cxEl('cxLimpiarTabla')?.addEventListener('click', () => { cxEl('cxBuscar').value = ''; CX.filtrosTabla = {}; cxAplicarFiltrosTabla(); });
 
   cxEl('cxAgregarBloque').addEventListener('click', () => { cxEl('cxBloques').insertAdjacentHTML('beforeend', cxBloqueHtml()); cxActualizarBloques(); });
   cxEl('cxLimpiarFiltros').addEventListener('click', () => { cxLimpiarFiltros(); cxActualizarFrase(); });

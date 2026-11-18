@@ -262,7 +262,8 @@ async function buscar(req, res) {
   try {
     const pool = await poolPromise;
     const esq = await esquema(pool);
-    const orden = 'n.Fecha_Atencion DESC, n.Id_Cita DESC, n.Codigo_Item';
+    // De la fecha más antigua a la más reciente: el día 1 del periodo sale primero.
+    const orden = 'n.Fecha_Atencion, n.Id_Cita, n.Codigo_Item';
     const filas = await withTransientRetry(() => conParams(pool.request(), filtros.params).query(`
       SELECT ${columnasLectura(esq)}
       FROM NProduccion n

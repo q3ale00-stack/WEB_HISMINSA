@@ -8,7 +8,7 @@
 // de historial.js: histIcono.
 
 // Estado de la búsqueda simple. La avanzada usa DEFA (más abajo); ambas comparten el render de resultados.
-const DEF = { filas: [], sexo: '', descripcion: '', elemento: () => document.getElementById('resDefunciones') };
+const DEF = { filas: [], sexo: '', etapa: '', causa: '', lugar: '', distrito: '', descripcion: '', elemento: () => document.getElementById('resDefunciones') };
 const DEF_PERIODOS = [['7', 'Últimos 7 días', 7], ['30', 'Último mes', 30], ['90', 'Últimos 3 meses', 90]];
 
 const defIso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -105,6 +105,10 @@ async function buscarDefunciones() {
     if (seq !== searchSeq.defunciones) return;
     DEF.filas = filas;
     DEF.sexo = '';
+    DEF.etapa = '';
+    DEF.causa = '';
+    DEF.lugar = '';
+    DEF.distrito = '';
     DEF.descripcion = [q ? `búsqueda «${q}»` : '', desde || hasta ? `${desde ? `del ${defFecha(desde)}` : ''} ${hasta ? `al ${defFecha(hasta)}` : ''}`.trim() : ''].filter(Boolean).join(' · ');
     DEF.filtro = { q, desde, hasta };
     renderDefunciones(DEF);
@@ -114,7 +118,18 @@ async function buscarDefunciones() {
 }
 
 function defFiltradas(st = DEF) {
-  return st.sexo ? st.filas.filter(x => defSexo(x.SEXO) === st.sexo) : st.filas;
+  let lista = st.sexo ? st.filas.filter(x => defSexo(x.SEXO) === st.sexo) : st.filas;
+  if (st.etapa) {
+    const etapa = DEF_ETAPAS.find(([nombre]) => nombre === st.etapa);
+    if (etapa) {
+      const [, , min, max] = etapa;
+      lista = lista.filter(x => { const e = defEdadAnios(x); return e !== null && e >= min && e <= max; });
+    }
+  }
+  if (st.causa) lista = lista.filter(x => defCausas(x)[0]?.descripcion === st.causa);
+  if (st.lugar) lista = lista.filter(x => defTexto(x.TIPO_LUGAR) === st.lugar);
+  if (st.distrito) lista = lista.filter(x => defTexto(x.DISTRITO) === st.distrito);
+  return lista;
 }
 
 // Resumen: el de la búsqueda avanzada llega del servidor (sobre todos los registros); el de la simple se calcula con las filas.
@@ -203,18 +218,22 @@ function defContar(filas, valor) {
   return [...conteo.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-// Lista con barra de fondo proporcional (mismo diseño que los «más frecuentes» del historial de atenciones).
-function defTopHtml(titulo, lista, { codigo = () => '', limite = 6, vacio = 'Sin datos registrados.' } = {}) {
+// Lista con barra de fondo proporcional (pulsable para filtrar los resultados de abajo).
+function defTopHtml(titulo, lista, { codigo = () => '', limite = 6, vacio = 'Sin datos registrados.', campo = '', activo = '' } = {}) {
   const max = lista[0]?.[1] || 1;
   return `<section class="ps-gen-top-col def-panel"><h4>${titulo}</h4>${lista.length
-    ? `<ol>${lista.slice(0, limite).map(([texto, n]) => `<li style="--w:${Math.max(6, Math.round((n / max) * 100))}%">
+    ? `<ol>${lista.slice(0, limite).map(([texto, n]) => {
+      const on = campo && activo === texto;
+      const attrs = campo ? ` role="button" tabindex="0" aria-pressed="${on}" data-def-filtro="${esc(campo)}" data-def-valor="${esc(texto)}" class="${on ? 'active' : ''}" title="Clic para filtrar por ${esc(texto)}"` : '';
+      return `<li style="--w:${Math.max(6, Math.round((n / max) * 100))}%"${attrs}>
         <span class="ps-gen-desc" title="${esc(texto)}">${esc(texto)}</span>${codigo(texto) ? `<code>${esc(codigo(texto))}</code>` : ''}<span class="ps-gen-n">${formatNumber(n)}</span>
-      </li>`).join('')}</ol>`
+      </li>`;
+    }).join('')}</ol>`
     : `<p class="ps-gen-vacio">${vacio}</p>`}</section>`;
 }
 
-// Análisis de las defunciones mostradas: etapas de vida por sexo, causas, lugar y distritos.
-function defAnalisisHtml(filas) {
+// Análisis de las defunciones mostradas: etapas de vida por sexo, causas, lugar y distritos (todos pulsables para filtrar).
+function defAnalisisHtml(filas, st = DEF) {
   const etapas = DEF_ETAPAS.map(([nombre, rango, min, max]) => {
     const grupo = filas.filter(x => { const e = defEdadAnios(x); return e !== null && e >= min && e <= max; });
     return { nombre, rango, f: grupo.filter(x => defSexo(x.SEXO) === 'F').length, m: grupo.filter(x => defSexo(x.SEXO) === 'M').length, total: grupo.length };
@@ -227,18 +246,21 @@ function defAnalisisHtml(filas) {
   return `<div class="def-analisis">
     <section class="def-panel def-etapas">
       <h4>Edad y sexo <span class="def-leyenda"><i class="f"></i>Mujeres <i class="m"></i>Hombres</span></h4>
-      <ul>${etapas.map(e => `<li>
-        <span class="def-etapa-nombre"><b>${e.nombre}</b><small>${e.rango}</small></span>
-        <span class="def-etapa-barra" title="${esc(`${e.nombre}: ${e.f} mujeres y ${e.m} hombres`)}">
-          <span class="f" style="width:${(e.f / maxEtapa) * 100}%"></span><span class="m" style="width:${(e.m / maxEtapa) * 100}%"></span>
-        </span>
-        <span class="def-etapa-n">${formatNumber(e.total)}</span>
-      </li>`).join('')}</ul>
+      <ul>${etapas.map(e => {
+        const on = st.etapa === e.nombre;
+        return `<li role="button" tabindex="0" aria-pressed="${on}" data-def-filtro="etapa" data-def-valor="${esc(e.nombre)}" class="${on ? 'active' : ''}" title="${esc(`Clic para filtrar: ${e.nombre} (${e.f} mujeres, ${e.m} hombres)`)}">
+          <span class="def-etapa-nombre"><b>${e.nombre}</b><small>${e.rango}</small></span>
+          <span class="def-etapa-barra">
+            <span class="f" style="width:${(e.f / maxEtapa) * 100}%"></span><span class="m" style="width:${(e.m / maxEtapa) * 100}%"></span>
+          </span>
+          <span class="def-etapa-n">${formatNumber(e.total)}</span>
+        </li>`;
+      }).join('')}</ul>
       ${sinEdad ? `<p class="def-nota">${formatNumber(sinEdad)} sin edad registrada.</p>` : ''}
     </section>
-    ${defTopHtml('Causas de muerte más frecuentes', causas, { codigo: d => cies.get(d) })}
-    ${defTopHtml('Lugar de fallecimiento', defContar(filas, x => defTexto(x.TIPO_LUGAR)), { limite: 5 })}
-    ${defTopHtml(`Distritos${violentas ? ` · ${formatNumber(violentas)} muerte(s) violenta(s)` : ''}`, defContar(filas, x => defTexto(x.DISTRITO)), { limite: 5 })}
+    ${defTopHtml('Causas de muerte más frecuentes', causas, { codigo: d => cies.get(d), campo: 'causa', activo: st.causa })}
+    ${defTopHtml('Lugar de fallecimiento', defContar(filas, x => defTexto(x.TIPO_LUGAR)), { limite: 5, campo: 'lugar', activo: st.lugar })}
+    ${defTopHtml(`Distritos${violentas ? ` · ${formatNumber(violentas)} muerte(s) violenta(s)` : ''}`, defContar(filas, x => defTexto(x.DISTRITO)), { limite: 5, campo: 'distrito', activo: st.distrito })}
   </div>`;
 }
 
@@ -352,6 +374,13 @@ function renderDefunciones(st = DEF) {
   const conResumen = avanzada || r.total >= 5;
   const titulo = avanzada ? '' : `<p class="def-encontrados">Encontramos <strong>${r.total === 1 ? '1 persona' : `${formatNumber(r.total)} personas`}</strong>${st.descripcion ? ` · ${esc(st.descripcion)}` : ''}${limite ? ' · se muestran las 300 más recientes' : ''}${r.total > 1 && r.total < 5 ? '. Pulsa «Ver certificado» en la persona que buscas.' : ''}</p>`;
 
+  const baseAnalisis = st.sexo ? st.filas.filter(x => defSexo(x.SEXO) === st.sexo) : st.filas;
+  const filtrosGrafico = [
+    ['etapa', 'Etapa', st.etapa],
+    ['causa', 'Causa', st.causa],
+    ['lugar', 'Lugar', st.lugar],
+    ['distrito', 'Distrito', st.distrito]
+  ].filter(([, , v]) => Boolean(v));
   const chip = (valor, texto, n) => `<button type="button" class="def-chip${st.sexo === valor ? ' on' : ''}" data-def-sexo="${valor}">${texto}<span>${formatNumber(n)}</span></button>`;
   el.innerHTML = `
     ${titulo}
@@ -362,16 +391,31 @@ function renderDefunciones(st = DEF) {
       <div class="def-stat def-stat-causa"><span>Causa de muerte más frecuente</span><strong title="${esc(r.causa?.descripcion || '')}">${r.causa ? esc(r.causa.descripcion) : '—'}</strong><small>${r.causa ? `${r.causa.cie ? `${esc(r.causa.cie)} · ` : ''}${formatNumber(r.causa.casos)} caso(s)` : ''}</small></div>
     </div>` : ''}
     ${!avanzada && st.filas.length === 1 ? defFichaHtml(st.filas[0], 0) : `
-    ${!avanzada && filas.length >= 5 ? defAnalisisHtml(filas) : ''}
+    ${!avanzada && st.filas.length >= 5 ? defAnalisisHtml(baseAnalisis, st) : ''}
     <section class="def-card">
       <div class="def-card-head">
         ${avanzada ? `<span class="def-muted">${esc(defRangoTexto(st))}</span>` : conResumen ? `<div class="def-chips" role="group" aria-label="Filtrar por sexo">${chip('', 'Todos', r.total)}${chip('F', 'Mujeres', r.mujeres)}${chip('M', 'Hombres', r.hombres)}</div>` : '<span></span>'}
         <div class="def-card-tools">${defVistaBotonesHtml()}${botonesExportarHtml(avanzada ? 'defuncionesAvanzada' : 'defunciones')}</div>
       </div>
-      ${defVista() === 'tabla' ? defTablaHtml(filas, st) : defTarjetasHtml(filas, st)}
+      ${filtrosGrafico.length ? `<div class="def-filtros-activos"><span>Mostrando ${formatNumber(filas.length)} de ${formatNumber(baseAnalisis.length)}:</span>${filtrosGrafico.map(([c, etq, v]) => `<span class="def-filtro-pill">${esc(etq)}: ${esc(v)} <button type="button" data-def-quitar-filtro="${c}" aria-label="Quitar filtro ${esc(etq)}">×</button></span>`).join('')}<button type="button" class="btn btn-ghost btn-xs" data-def-quitar-filtro="todos">Ver todos</button></div>` : ''}
+      ${filas.length ? (defVista() === 'tabla' ? defTablaHtml(filas, st) : defTarjetasHtml(filas, st)) : '<div class="table-empty">No hay defunciones que coincidan con esa combinación de filtros.</div>'}
     </section>`}
     ${avanzada ? defPaginador(st) : ''}`;
   el.querySelectorAll('[data-def-sexo]').forEach(b => b.addEventListener('click', () => { st.sexo = b.dataset.defSexo; renderDefunciones(st); }));
+  const aplicarFiltroGrafico = (campo, valor) => {
+    st[campo] = st[campo] === valor ? '' : valor;
+    renderDefunciones(st);
+  };
+  el.querySelectorAll('[data-def-filtro]').forEach(b => {
+    b.addEventListener('click', () => aplicarFiltroGrafico(b.dataset.defFiltro, b.dataset.defValor));
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); aplicarFiltroGrafico(b.dataset.defFiltro, b.dataset.defValor); } });
+  });
+  el.querySelectorAll('[data-def-quitar-filtro]').forEach(b => b.addEventListener('click', () => {
+    const c = b.dataset.defQuitarFiltro;
+    if (c === 'todos') { st.etapa = ''; st.causa = ''; st.lugar = ''; st.distrito = ''; }
+    else st[c] = '';
+    renderDefunciones(st);
+  }));
   el.querySelectorAll('[data-def-vista]').forEach(b => b.addEventListener('click', () => {
     try { localStorage.setItem(DEF_VISTA_CLAVE, b.dataset.defVista); } catch (_) { /* sin almacenamiento */ }
     renderDefunciones(st);
@@ -461,7 +505,7 @@ exportadores.defuncionesAvanzada = async (formato, boton) => {
   if (!datos.filas.length) { toast('No hay defunciones para exportar con esos filtros.', 'info'); return; }
   const recortado = datos.filas.length >= (datos.limiteExportar || 5000);
   return exportarDocumento(formato, {
-    titulo: 'Reporte de defunciones (SINADEF) · búsqueda avanzada',
+    titulo: 'Reporte de defunciones (SINADEF) · búsqueda con filtros',
     datos: [...defaActivos().map(([, etiqueta, valor]) => [etiqueta, valor]),
       ['Registros exportados', formatNumber(datos.filas.length) + (DEFA.total ? ` de ${formatNumber(DEFA.total)}` : '')]],
     archivo: 'defunciones-avanzada',

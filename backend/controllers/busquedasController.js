@@ -164,7 +164,8 @@ const sugerenciasPacientes = async (req, res) => {
           NULLIF(LTRIM(RTRIM(CONCAT(LTRIM(RTRIM(p.Apellido_Paterno_Paciente)), ' ', LTRIM(RTRIM(p.Apellido_Materno_Paciente)), ' ', LTRIM(RTRIM(p.Nombres_Paciente))))), '') AS Paciente,
           p.Fecha_Nacimiento_Paciente AS FechaNacimiento, p.Id_Genero AS Sexo, p.Domicilio_Declarado, p.Domicilio_Reniec,
           est.Nombre_Establecimiento AS Establecimiento,
-          ult.UltimaAtencion, ult.Atenciones
+          ult.UltimaAtencion, ult.Atenciones,
+          COUNT(*) OVER () AS Total -- todos los que coinciden, no solo los devueltos
         FROM MaestroPaciente p
         OUTER APPLY (SELECT TOP (1) e.Nombre_Establecimiento FROM MAESTRO_HIS_ESTABLECIMIENTO e WHERE e.Id_Establecimiento = p.Id_Establecimiento) est
         OUTER APPLY (SELECT MAX(n.Fecha_Atencion) AS UltimaAtencion, COUNT(DISTINCT n.Id_Cita) AS Atenciones FROM NProduccion n WHERE n.Id_Paciente = p.Id_Paciente) ult
@@ -615,7 +616,8 @@ const sugerenciasPersonal = async (req, res) => {
         coincidencia = terminos.map((_, i) => `CASE WHEN CONCAT(' ', p.Apellido_Paterno_Personal, ' ', p.Apellido_Materno_Personal, ' ', p.Nombres_Personal, ' ') LIKE @w${i} THEN 1 ELSE 0 END`).join(' + ');
       }
       return request.query(`
-        SELECT TOP (${limite}) x.*, ult.UltimaAtencion, ult.Atenciones
+        SELECT TOP (${limite}) x.*, ult.UltimaAtencion, ult.Atenciones,
+          COUNT(*) OVER () AS Total -- todos los que coinciden, no solo los devueltos
         FROM (
           SELECT ${coincidencia} AS Palabras, ${SELECT_PERSONAL}
           WHERE ${where}

@@ -2,21 +2,21 @@
   <!-- Panel compacto: todo está, pero solo se despliega lo que se usa. js/consultas.js dibuja las listas. -->
   <div id="cxPanel" class="card cx-panel">
     <div class="cx-rapidas-fila">
-      <span class="cx-etiqueta">Rápidas</span>
-      <div class="cx-rapidas" id="cxRapidas" role="group" aria-label="Consultas rápidas"></div>
+      <span class="cx-etiqueta">Frecuentes</span>
+      <div class="cx-rapidas" id="cxRapidas" role="group" aria-label="Consultas frecuentes"></div>
     </div>
 
     <!-- Parámetros en una sola línea -->
     <div class="cx-parametros">
-      <label class="cx-campo cx-p-medida"><span>Medida</span>
+      <label class="cx-campo cx-p-medida"><span>¿Qué quieres calcular?</span>
         <select class="select-native" id="cxMedida"></select>
       </label>
 
-      <div class="cx-campo cx-p-grupos"><span id="cxGruposEtq">Agrupar por</span>
+      <div class="cx-campo cx-p-grupos"><span id="cxGruposEtq">Ver resultados por</span>
         <details class="cx-desplegable" id="cxGruposMenu">
           <summary class="select-native" aria-labelledby="cxGruposEtq cxGruposResumen"><span id="cxGruposResumen">—</span></summary>
           <div class="cx-desplegable-caja">
-            <p class="cx-desplegable-nota">Puedes marcar varios. Las columnas salen en el orden en que los marcas.</p>
+            <p class="cx-desplegable-nota">Marca cómo quieres dividir la tabla (por ejemplo: diagnóstico, profesional o mes). Saldrán en el orden en que los elijas.</p>
             <div class="cx-opciones" id="cxGrupos"></div>
           </div>
         </details>
@@ -37,19 +37,19 @@
         <span class="cx-etiqueta">Filtros</span>
         <div class="cx-pestanas" id="cxPestanas" role="tablist" aria-label="Secciones de filtros"></div>
         <details class="cx-desplegable cx-reglas-menu" id="cxReglasMenu">
-          <summary class="cx-enlace-sutil" title="Cómo se combinan los filtros">Reglas: <span id="cxReglasResumen">misma cita · todos</span></summary>
+          <summary class="cx-enlace-sutil" title="Cómo se combinan los filtros">Coincidencia: <span id="cxReglasResumen">en la misma cita · todos</span></summary>
           <div class="cx-desplegable-caja cx-reglas">
-            <label class="cx-campo"><span>Evaluar</span>
+            <label class="cx-campo"><span>Buscar coincidencias</span>
               <select class="select-native" id="cxFormAmbito">
-                <option value="cita">En la misma cita</option>
-                <option value="paciente">En el mismo paciente</option>
-                <option value="registro">En la misma fila HIS</option>
+                <option value="cita">En la misma cita (aunque tenga varios códigos)</option>
+                <option value="paciente">En el historial del mismo paciente</option>
+                <option value="registro">En el mismo diagnóstico o procedimiento</option>
               </select>
             </label>
-            <label class="cx-campo"><span>Debe cumplir</span>
+            <label class="cx-campo"><span>Condición</span>
               <select class="select-native" id="cxFormModo">
-                <option value="AND">Todos los filtros (Y)</option>
-                <option value="OR">Al menos uno (O)</option>
+                <option value="AND">Debe cumplir todos los filtros</option>
+                <option value="OR">Basta con cumplir al menos uno</option>
               </select>
             </label>
           </div>
@@ -60,15 +60,15 @@
 
       <!-- Combinaciones Y / O: es una pestaña más -->
       <div class="cx-seccion" id="cxSeccionBloques" role="tabpanel" hidden>
-        <p class="cx-texto">Para usar varias veces un mismo campo, como dos códigos distintos. «Misma cita» comprueba que ocurran juntos en una consulta; «mismo paciente», en su historial.</p>
-        <label class="cx-conector-form" id="cxFormConector" hidden><span>Unir los filtros de las otras pestañas con estos bloques:</span>
+        <p class="cx-texto">Úsalo cuando necesites combinar condiciones alternativas (por ejemplo, pacientes con Depresión O Ansiedad, o dos diagnósticos distintos en una misma cita).</p>
+        <label class="cx-conector-form" id="cxFormConector" hidden><span>Unir los filtros de las otras pestañas con estos grupos:</span>
           <select class="select-native" id="cxFormSiguiente">
             <option value="AND">Y además</option>
             <option value="OR">O bien</option>
           </select>
         </label>
         <div class="cx-bloques" id="cxBloques"></div>
-        <button type="button" class="btn btn-secondary btn-sm" id="cxAgregarBloque">+ Agregar bloque</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="cxAgregarBloque">+ Agregar grupo de condiciones</button>
       </div>
 
       <!-- Filtros activos, siempre a la vista aunque su pestaña esté cerrada -->
@@ -96,10 +96,10 @@
         <div>
           <p class="cx-resp-etiqueta" id="cxTotalEtiqueta">Resultado</p>
           <ul class="cx-resumen">
-            <li id="cxResPacientes"><strong id="cxPacientes">—</strong> pacientes</li>
-            <li id="cxResCitas"><strong id="cxCitas">—</strong> citas</li>
-            <li id="cxResRegistros"><strong id="cxRegistros">—</strong> registros HIS</li>
-            <li title="Un mismo paciente puede aparecer en varias filas, por eso las filas no siempre suman el total."><strong id="cxFilas">—</strong> filas <span aria-hidden="true">ⓘ</span> <span class="cx-insignia aviso" id="cxInsignia" hidden></span></li>
+            <li id="cxResPacientes"><strong id="cxPacientes">—</strong> pacientes distintos</li>
+            <li id="cxResCitas"><strong id="cxCitas">—</strong> citas atendidas</li>
+            <li id="cxResRegistros" title="Una misma cita puede incluir varios diagnósticos o procedimientos registrados."><strong id="cxRegistros">—</strong> ítems clínicos (dx/proc.) <span aria-hidden="true">ⓘ</span></li>
+            <li title="Cantidad de filas mostradas en la tabla de resultados."><strong id="cxFilas">—</strong> filas en tabla <span class="cx-insignia aviso" id="cxInsignia" hidden></span></li>
           </ul>
         </div>
       </div>
@@ -115,7 +115,11 @@
     <div class="cx-grafico" id="cxGrafico"></div>
 
     <div class="cx-tabla-barra">
-      <input type="search" class="input" id="cxBuscar" placeholder="Buscar en la tabla" aria-label="Buscar en la tabla" autocomplete="off">
+      <div class="cx-buscador-grupo">
+        <input type="search" class="input" id="cxBuscar" placeholder="Buscar en resultados (ej. enfermeria 99206, F32...)" aria-label="Buscar en resultados" autocomplete="off">
+        <span class="cx-buscador-estado" id="cxBuscarEstado" hidden></span>
+        <button type="button" class="btn btn-ghost btn-xs" id="cxLimpiarTabla" hidden>Limpiar</button>
+      </div>
       <label class="cx-por-pagina">Filas por página
         <select class="select-native" id="cxPorPagina">
           <option value="15">15</option>
@@ -126,6 +130,7 @@
         </select>
       </label>
     </div>
+    <div class="cx-filtros-tabla" id="cxFiltrosTabla" hidden></div>
     <div class="table-wrap cx-tabla-wrap">
       <table id="cxTabla" class="cx-tabla" aria-label="Resultado de la consulta">
         <thead></thead>

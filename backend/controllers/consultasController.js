@@ -15,7 +15,7 @@
       financiador: { label: 'Financiador', type: 'string', sql: 'f.Descripcion_Financiador' },
       sexo: { label: 'Sexo', type: 'string', sql: 'mp.Id_Genero' },
       edad: { label: 'Edad registrada (años)', type: 'number', sql: "CASE WHEN np.Tipo_Edad = 'A' THEN np.Edad_Reg END" },
-      codigoHIS: { label: 'Código HIS', type: 'string', sql: 'np.Codigo_Item' },
+      codigoHIS: { label: 'Código CIE-10 / CPMS', type: 'string', sql: 'np.Codigo_Item' },
       diagnostico: { label: 'Diagnóstico', type: 'string', sql: 'c.Descripcion_Item' },
       valorLab: {
         label: 'Valor LAB',
@@ -39,7 +39,7 @@
       mes: { label: 'Mes', sql: 'CONVERT(char(7), np.Fecha_Atencion, 120)' },
       dia: { label: 'Día', sql: 'CONVERT(date, np.Fecha_Atencion)' },
       año: { label: 'Año', sql: 'YEAR(np.Fecha_Atencion)' },
-      codigoHIS: { label: 'Código HIS', sql: 'np.Codigo_Item' },
+      codigoHIS: { label: 'Código CIE-10 / CPMS', sql: 'np.Codigo_Item' },
       diagnostico: { label: 'Diagnóstico', sql: 'c.Descripcion_Item' },
       tipoDiagnostico: { label: 'Tipo de diagnóstico HIS', sql: 'np.Tipo_Diagnostico' },
       financiador: { label: 'Financiador', sql: 'f.Descripcion_Financiador' },
@@ -52,9 +52,9 @@
 
     // Métricas agregadas permitidas; el cliente elige una clave, nunca envía una expresión SQL propia.
     const MEASURE_DEFS = {
-      pacientesUnicos: { label: 'Pacientes únicos', sql: 'COUNT(DISTINCT np.Id_Paciente)' },
-      atenciones: { label: 'Atenciones (citas únicas)', sql: 'COUNT(DISTINCT np.Id_Cita)' },
-      registros: { label: 'Registros HIS', sql: 'COUNT_BIG(*)' },
+      pacientesUnicos: { label: 'Número de pacientes distintos', sql: 'COUNT(DISTINCT np.Id_Paciente)' },
+      atenciones: { label: 'Número de citas atendidas', sql: 'COUNT(DISTINCT np.Id_Cita)' },
+      registros: { label: 'Diagnósticos y procedimientos registrados', sql: 'COUNT_BIG(*)' },
       sumLab: {
         label: 'Suma LAB (10+ como 10)',
         sql: "SUM(CASE WHEN TRY_CAST(np.Valor_Lab AS DECIMAL(18,2)) IS NOT NULL THEN TRY_CAST(np.Valor_Lab AS DECIMAL(18,2)) WHEN LTRIM(RTRIM(np.Valor_Lab)) = '10+' THEN 10 ELSE NULL END)"
@@ -70,7 +70,7 @@
       maxTalla: { label: 'Talla máxima', sql: 'MAX(np.Talla)' },
       avgHemoglobina: { label: 'Hemoglobina promedio', sql: 'AVG(np.Hemoglobina)' },
       maxHemoglobina: { label: 'Hemoglobina máxima', sql: 'MAX(np.Hemoglobina)' },
-      codigosUnicos: { label: 'Códigos HIS distintos', sql: 'COUNT(DISTINCT np.Codigo_Item)' }
+      codigosUnicos: { label: 'Códigos CIE-10 / CPMS distintos', sql: 'COUNT(DISTINCT np.Codigo_Item)' }
     };
 
     const LEGACY_MEASURE_KEYS = { personasUnicas: 'pacientesUnicos' };
@@ -730,12 +730,12 @@
         measures,
         groupings,
         scopes: [
-          { value: 'cita', label: 'Misma cita / atención' },
-          { value: 'paciente', label: 'Mismo paciente' },
-          { value: 'registro', label: 'Mismo registro / fila' }
+          { value: 'cita', label: 'En la misma cita (aunque tenga varios códigos)' },
+          { value: 'paciente', label: 'En el historial del mismo paciente' },
+          { value: 'registro', label: 'En el mismo diagnóstico o procedimiento' }
         ],
         operators: OPERATOR_MAP,
-        note: 'Los conteos distinguen pacientes únicos, citas HIS únicas y registros de producción.'
+        note: 'Cada cita puede incluir varios diagnósticos o procedimientos; los conteos distinguen pacientes distintos, citas atendidas e ítems registrados.'
       });
     };
 
@@ -747,7 +747,7 @@
             id: 'cumplimiento-sesiones',
             nombre: 'Cumplimiento de sesiones',
             descripcion: 'Comparación entre ejecución real y meta programada por actividad.',
-            fuente: 'NProduccion',
+            fuente: 'Producción asistencial',
             formula: 'Ejecutado / Meta × 100',
             periodicidad: 'Mensual',
             agrupacion: ['Establecimiento', 'Mes']
@@ -763,12 +763,12 @@
           },
           {
             id: 'produccion-por-codigo',
-            nombre: 'Producción por código HIS',
-            descripcion: 'Cantidad de atenciones y pacientes por código HIS.',
-            fuente: 'NProduccion',
-            formula: 'COUNT(*) agrupado por codigoHIS',
+            nombre: 'Producción por código CIE-10 / CPMS',
+            descripcion: 'Cantidad de atenciones y pacientes por código CIE-10 / CPMS.',
+            fuente: 'Producción asistencial',
+            formula: 'COUNT(*) agrupado por código CIE-10 / CPMS',
             periodicidad: 'Flexible',
-            agrupacion: ['Código HIS', 'Establecimiento']
+            agrupacion: ['Código CIE-10 / CPMS', 'Establecimiento']
           }
         ]
       });
@@ -777,7 +777,7 @@
     // Obtiene la actividad histórica y analítica completa de un código HIS (CIE-10 o CPMS)
     const getActividadCodigo = async (req, res) => {
       const codigo = String(req.params.codigo || '').trim();
-      if (!codigo) return res.status(400).json({ message: 'Código HIS requerido' });
+      if (!codigo) return res.status(400).json({ message: 'Código CIE-10 / CPMS requerido' });
       try {
         const pool = await poolPromise;
         const request = pool.request();
@@ -1004,7 +1004,55 @@
         const maxLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
 
         const query = `
-          SELECT TOP (${maxLimit})
+          ;WITH CitasSeleccionadas AS (
+            SELECT TOP (${maxLimit})
+              np.Id_Cita,
+              MAX(np.Fecha_Atencion) AS Fecha_Orden,
+              MAX(np.Num_Reg) AS Reg_Orden
+            FROM NProduccion np
+            OUTER APPLY (
+              SELECT TOP (1) catalogo.Descripcion_Item, catalogo.Descripcion_Tipo_Item
+              FROM MAESTRO_HIS_CIE_CPMS catalogo
+              WHERE catalogo.Codigo_Item = np.Codigo_Item
+              ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Descripcion_Item)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Descripcion_Item
+            ) c
+            OUTER APPLY (
+              SELECT TOP (1) catalogo.Numero_Documento_Paciente, catalogo.Apellido_Paterno_Paciente, catalogo.Apellido_Materno_Paciente, catalogo.Nombres_Paciente, catalogo.Id_Genero, catalogo.Historia_Clinica
+              FROM MaestroPaciente catalogo
+              WHERE catalogo.Id_Paciente = np.Id_Paciente
+            ) mp
+            OUTER APPLY (
+              SELECT TOP (1)
+                LTRIM(RTRIM(CONCAT(catalogo.Apellido_Paterno_Personal, ' ', catalogo.Apellido_Materno_Personal, ' ', catalogo.Nombres_Personal))) AS Nombre_Completo_Personal,
+                catalogo.Nombres_Personal
+              FROM MaestroPersonal catalogo
+              WHERE catalogo.Id_Personal = np.Id_Personal
+              ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Nombres_Personal)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Apellido_Paterno_Personal, catalogo.Nombres_Personal
+            ) p
+            OUTER APPLY (
+              SELECT TOP (1) catalogo.Nombre_Establecimiento, catalogo.Departamento, catalogo.Provincia
+              FROM MAESTRO_HIS_ESTABLECIMIENTO catalogo
+              WHERE catalogo.Id_Establecimiento = np.Id_Establecimiento
+              ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Nombre_Establecimiento)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Nombre_Establecimiento
+            ) e
+            OUTER APPLY (
+              SELECT TOP (1) catalogo.Descripcion_Ups
+              FROM MAESTRO_HIS_UPS catalogo
+              WHERE catalogo.Id_Ups = np.Id_Ups
+              ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Descripcion_Ups)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Descripcion_Ups
+            ) u
+            OUTER APPLY (
+              SELECT TOP (1) catalogo.Descripcion_Financiador
+              FROM MAESTRO_HIS_FINANCIADOR catalogo
+              WHERE catalogo.Id_Financiador = np.Id_Financiador
+              ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Descripcion_Financiador)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Descripcion_Financiador
+            ) f
+            WHERE ${whereClauses.join(' AND ')}
+              AND np.Id_Cita IS NOT NULL
+            GROUP BY np.Id_Cita
+            ORDER BY Fecha_Orden DESC, Reg_Orden DESC
+          )
+          SELECT
             np.Id_Cita as idCita,
             np.Num_Reg as numeroRegistro,
             np.Id_Correlativo_Item as correlativo,
@@ -1027,6 +1075,7 @@
             u.Descripcion_Ups as descripcionUps,
             f.Descripcion_Financiador as financiador
           FROM NProduccion np
+          INNER JOIN CitasSeleccionadas cs ON np.Id_Cita = cs.Id_Cita
           OUTER APPLY (
             SELECT TOP (1) catalogo.Descripcion_Item, catalogo.Descripcion_Tipo_Item
             FROM MAESTRO_HIS_CIE_CPMS catalogo
@@ -1064,8 +1113,7 @@
             WHERE catalogo.Id_Financiador = np.Id_Financiador
             ORDER BY CASE WHEN NULLIF(LTRIM(RTRIM(catalogo.Descripcion_Financiador)), '') IS NULL THEN 1 ELSE 0 END, catalogo.Descripcion_Financiador
           ) f
-          WHERE ${whereClauses.join(' AND ')}
-          ORDER BY np.Fecha_Atencion DESC, np.Num_Reg DESC, np.Id_Correlativo_Item;
+          ORDER BY np.Fecha_Atencion DESC, np.Id_Cita DESC, np.Num_Reg DESC, np.Id_Correlativo_Item;
         `;
 
         const result = await withTransientRetry(() => request.query(query));

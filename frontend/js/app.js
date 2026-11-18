@@ -60,10 +60,7 @@ async function apiFetch(path, opts = {}, retries = 2) {
         error.status = res.status;
         if (res.status === 403) avisarAccesoDenegado();
         if (res.status === 401 && currentUser && path !== '/auth/logout') {
-          returnToLogin();
-          const loginStatus = document.getElementById('loginStatus');
-          loginStatus.textContent = 'Tu sesión venció. Inicia sesión nuevamente.';
-          loginStatus.hidden = false;
+          returnToLogin('Tu sesión venció. Inicia sesión nuevamente.');
         }
         throw error;
       }
@@ -86,9 +83,9 @@ const viewMeta = {
   inicio: { title: 'Inicio', sub: 'Hospital Regional de Ayacucho «Miguel A. Mariscal Llerena»' },
   consultas: { title: 'Consultas y análisis', sub: 'Cuenta pacientes, citas y registros HIS, y organízalos como necesites' },
   pacientes: { title: 'Pacientes', sub: '' },
-  atenciones: { title: 'Atenciones', sub: 'Registros de NProduccion por cita, paciente, personal, código o fecha' },
+  atenciones: { title: 'Atenciones', sub: 'Registros asistenciales por cita, paciente, personal, código o fecha' },
   defunciones: { title: 'Defunciones', sub: 'Personas fallecidas en Ayacucho según el certificado de defunción (SINADEF)' },
-  personal: { title: 'Personal', sub: 'Ficha de cada profesional de MaestroPersonal y sus atenciones' },
+  personal: { title: 'Personal', sub: 'Ficha de cada profesional de la salud y sus atenciones' },
   catalogos: { title: 'Catálogos', sub: 'Tablas maestras del HIS: diagnósticos, procedimientos, establecimientos, UPS y más' },
   reportes: { title: 'Producción asistencial', sub: 'Indicadores por año, mes, tratamiento, establecimiento y servicio' },
   indicadores: { title: 'Indicadores de Desempeño', sub: 'Seguimiento y medición mensual de indicadores HIS MINSA' },
@@ -280,7 +277,11 @@ const enterApplication = async user => {
   await initializeMainApp();
 };
 
-const returnToLogin = () => {
+// Aviso que se muestra en el ingreso después de recargar la página (ver returnToLogin).
+const AVISO_INGRESO_CLAVE = 'his_aviso_ingreso';
+
+const returnToLogin = (mensaje = '') => {
+  const habiaSesion = Boolean(currentUser);
   currentUser = null;
   stopImportPolling();
   document.getElementById('navImportar').hidden = true;
@@ -288,8 +289,20 @@ const returnToLogin = () => {
   document.querySelector('.login-page').hidden = false;
   document.getElementById('loginPassword').value = '';
   mostrarUsuarioEnEncabezado(null);
+  const inicioMedico = document.getElementById('inicioMedico');
+  if (inicioMedico) { inicioMedico.hidden = true; inicioMedico.innerHTML = ''; }
   detenerControlInactividad();
   abrirMenuUsuario(false);
+  // Al terminar una sesión se recarga la página: así no queda en pantalla ni en memoria nada de lo que
+  // vio la cuenta anterior (fichas, búsquedas, reportes), y la siguiente cuenta empieza en Inicio.
+  if (habiaSesion) {
+    try {
+      if (mensaje) sessionStorage.setItem(AVISO_INGRESO_CLAVE, mensaje);
+      else sessionStorage.removeItem(AVISO_INGRESO_CLAVE);
+    } catch (_) { /* sin almacenamiento: se recarga sin aviso */ }
+    history.replaceState(null, '', location.pathname);
+    location.reload();
+  }
 };
 
 const profileFields = [
@@ -412,15 +425,17 @@ async function submitNewUser(event) {
   }
 }
 
-async function logout() {
+async function logout(mensaje) {
+  // También se usa como manejador de clic: en ese caso llega el evento, no un mensaje.
+  const aviso = typeof mensaje === 'string' ? mensaje : '';
   const button = document.getElementById('logoutButton');
   button.disabled = true;
   try {
     await apiFetch('/auth/logout', { method: 'POST' });
-    returnToLogin();
+    returnToLogin(aviso);
   } catch (error) {
     if (error.status === 401) {
-      returnToLogin();
+      returnToLogin(aviso);
     } else {
       showAlert(error.message, 'error');
     }
@@ -510,6 +525,16 @@ alCargarVistas(async () => {
     loginStatus.textContent = error.message;
     loginStatus.hidden = false;
   }
+
+  // Aviso pendiente de la sesión anterior (venció, o se cerró por inactividad).
+  try {
+    const aviso = sessionStorage.getItem(AVISO_INGRESO_CLAVE);
+    sessionStorage.removeItem(AVISO_INGRESO_CLAVE);
+    if (aviso && !currentUser) {
+      loginStatus.textContent = aviso;
+      loginStatus.hidden = false;
+    }
+  } catch (_) { /* sin almacenamiento */ }
 });
 
 // ═══════════════════════════════════════
@@ -559,12 +584,12 @@ const COLUMN_LABELS = {
   mes: 'Mes',
   dia: 'Día',
   año: 'Año',
-  codigoHIS: 'Código HIS',
+  codigoHIS: 'Código CIE-10 / CPMS',
   diagnostico: 'Diagnóstico',
-  tipoDiagnostico: 'Tipo de diagnóstico HIS',
+  tipoDiagnostico: 'Tipo de diagnóstico',
   financiador: 'Financiador',
   sexo: 'Sexo',
-  ups: 'UPS',
+  ups: 'Servicio (UPS)',
   edad: 'Edad',
   peso: 'Peso',
   talla: 'Talla',
@@ -572,9 +597,9 @@ const COLUMN_LABELS = {
   valorLab: 'Valor LAB',
   historiaClinica: 'Historia clínica',
   total: 'Resultado total',
-  registros: 'Registros HIS',
-  pacientes: 'Pacientes únicos',
-  atenciones: 'Citas únicas'
+  registros: 'Ítems clínicos (dx/proc.)',
+  pacientes: 'Pacientes distintos',
+  atenciones: 'Citas atendidas'
 };
 
 function escJs(value) {
@@ -630,7 +655,7 @@ async function abrirModalActividadCodigo(codigoHIS, descripcion, event) {
 
   badge.textContent = codigoHIS;
   desc.textContent = descripcion || 'Consultando catálogo...';
-  body.innerHTML = '<div class="table-empty"><span class="spinner-sm"></span> Consultando actividad en NProducción...</div>';
+  body.innerHTML = '<div class="table-empty"><span class="spinner-sm"></span> Consultando actividad en la base asistencial...</div>';
   modal.classList.add('show');
 
   try {
@@ -906,7 +931,7 @@ function renderModalDetalleAtencionesTab() {
                   <span class="badge badge-neutral">${cita.items.length} diagnósticos/procedimientos</span>
                 </div>
                 <div class="actions">
-                  <button type="button" class="btn btn-primary btn-xs" onclick="cerrarModalDetalleAtenciones(); abrirFichaPacienteDesdeResultados('${esc(cita.idPaciente || cita.documentoPaciente)}', '${esc(fullName)}', event)">
+                  <button type="button" class="btn btn-primary btn-xs" onclick="cerrarModalDetalleAtenciones(); abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                     Historia Clínica
                   </button>
@@ -916,7 +941,7 @@ function renderModalDetalleAtencionesTab() {
                 <div class="cita-info-row">
                   <div class="cita-info-item">
                     <strong>Paciente:</strong>
-                    <button type="button" class="btn-cell-link patient-cell-btn" onclick="cerrarModalDetalleAtenciones(); abrirFichaPacienteDesdeResultados('${esc(cita.idPaciente || cita.documentoPaciente)}', '${esc(fullName)}', event)">
+                    <button type="button" class="btn-cell-link patient-cell-btn" onclick="cerrarModalDetalleAtenciones(); abrirFichaPacienteDesdeResultados('${escJs(cita.idPaciente || cita.documentoPaciente)}', '${escJs(fullName)}', event)">
                       ${esc(fullName)} (${esc(cita.documentoPaciente || cita.idPaciente || '-')}) ↗
                     </button>
                   </div>
@@ -1074,7 +1099,7 @@ function renderModalDetalleAtencionesTab() {
           <thead>
             <tr>
               <th style="width:50px;">#</th>
-              <th>Código HIS</th>
+              <th>Código CIE-10 / CPMS</th>
               <th>Descripción</th>
               <th style="text-align:right;">Registros</th>
               <th style="text-align:right;">Pacientes</th>
@@ -3136,7 +3161,7 @@ const FIELD_LABELS = {
   Id_Condicion_Establecimiento: 'Condición en el establecimiento', Id_Condicion_Servicio: 'Condición en el servicio',
   Edad_Reg: 'Edad registrada', Tipo_Edad: 'Tipo de edad', Anio_Actual_Paciente: 'Edad actual (años)',
   Mes_Actual_Paciente: 'Edad actual (meses)', Dia_Actual_Paciente: 'Edad actual (días)', Id_Turno: 'Turno',
-  Codigo_Item: 'Código HIS', DescItem: 'Descripción del código', Tipo_Diagnostico: 'Tipo de diagnóstico', Valor_Lab: 'Valor LAB',
+  Codigo_Item: 'Código CIE-10 / CPMS', DescItem: 'Descripción del código', Tipo_Diagnostico: 'Tipo de diagnóstico', Valor_Lab: 'Valor LAB',
   Id_Correlativo: 'Correlativo del ítem', Id_Correlativo_Lab: 'Correlativo LAB', Peso: 'Peso', Talla: 'Talla',
   Hemoglobina: 'Hemoglobina', Perimetro_Abdominal: 'Perímetro abdominal', Perimetro_Cefalico: 'Perímetro cefálico',
   Id_Otra_Condicion: 'Otra condición', Id_Centro_Poblado: 'Centro poblado', Fecha_Ultima_Regla: 'Fecha de última regla',
@@ -3283,7 +3308,7 @@ exportadores.produccion = (formato, boton) => exportarProduccion(formato, boton)
 // Tabla con el diseño del reporte del personal (F40 morado): FECHA y CITA combinadas hacia abajo, un renglón por código.
 const COLUMNAS_ATENCION_F40 = [
   { titulo: 'FECHA', alinear: 'center', ancho: 12 }, { titulo: 'CITA', alinear: 'center', ancho: 13 }, { titulo: 'SERVICIO (UPS)', ancho: 22 },
-  { titulo: 'TURNO', alinear: 'center', ancho: 7 }, { titulo: 'CÓDIGO HIS', alinear: 'center', ancho: 11 }, { titulo: 'DESCRIPCIÓN', ancho: 46 },
+  { titulo: 'TURNO', alinear: 'center', ancho: 7 }, { titulo: 'CÓDIGO CIE-10 / CPMS', alinear: 'center', ancho: 11 }, { titulo: 'DESCRIPCIÓN', ancho: 46 },
   { titulo: 'TIPO DX', alinear: 'center', ancho: 8 }, { titulo: 'VALOR LAB', alinear: 'center', ancho: 9 }, { titulo: 'PACIENTE', ancho: 26 }, { titulo: 'ATENDIÓ', ancho: 28 }
 ];
 function filasAtencionF40(filas) {
@@ -3360,7 +3385,7 @@ exportadores.cita = async (formato, boton, { cita } = {}) => {
     titulo: 'Diagnósticos y actividades registrados',
     hoja: 'Diagnósticos',
     estilo: 'f40',
-    columnas: [{ titulo: 'N.º', ancho: 6, alinear: 'center' }, { titulo: 'CÓDIGO HIS', ancho: 13, alinear: 'center' }, { titulo: 'DESCRIPCIÓN', ancho: 60 }, { titulo: 'TIPO DX', ancho: 14, alinear: 'center' }, { titulo: 'VALOR LAB', ancho: 12, alinear: 'center' }],
+    columnas: [{ titulo: 'N.º', ancho: 6, alinear: 'center' }, { titulo: 'CÓDIGO CIE-10 / CPMS', ancho: 13, alinear: 'center' }, { titulo: 'DESCRIPCIÓN', ancho: 60 }, { titulo: 'TIPO DX', ancho: 14, alinear: 'center' }, { titulo: 'VALOR LAB', ancho: 12, alinear: 'center' }],
     filas: rows.map((x, i) => [i + 1, x[pickKeys(x, ['Codigo_Item'])[0]], x.DescItem, TIPOS_DX[String(x[pickKeys(x, ['Tipo_Diagnostico'])[0]] || '').toUpperCase()] || x[pickKeys(x, ['Tipo_Diagnostico'])[0]], x[pickKeys(x, ['Valor_Lab'])[0]]])
   }];
   if (mediciones.length) {
@@ -4475,10 +4500,7 @@ function uploadImportFile(file, onProgress) {
       try { data = JSON.parse(xhr.responseText); } catch { /* respuesta sin JSON */ }
       if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
       if (xhr.status === 401 && currentUser) {
-        returnToLogin();
-        const loginStatus = document.getElementById('loginStatus');
-        loginStatus.textContent = 'Tu sesión venció. Inicia sesión nuevamente.';
-        loginStatus.hidden = false;
+        returnToLogin('Tu sesión venció. Inicia sesión nuevamente.');
       }
       reject(new Error(data.message || `No se pudo subir ${file.name} (HTTP ${xhr.status}).`));
     };
@@ -4937,6 +4959,8 @@ async function cargarInicio() {
   // El médico ve su propio Inicio (más simple); la portada general queda oculta por css («Modo médico»).
   const inicioMedico = document.getElementById('inicioMedico');
   if (inicioMedico) inicioMedico.hidden = !esModoMedico();
+  // Si antes entró un médico en esta misma pestaña, se borra su Inicio para que no lo vea otra cuenta.
+  if (inicioMedico && !esModoMedico()) inicioMedico.innerHTML = '';
   if (esModoMedico()) { cargarInicioMedico(); return; }
   const hour = new Date().getHours();
   const firstName = String(currentUser?.fullName || currentUser?.username || '').trim().split(/\s+/)[0] || '';
@@ -5025,7 +5049,7 @@ function selectHomeMonth(index) {
 
   if (noteEl) {
     noteEl.textContent = isLast
-      ? 'Últimos meses con registros en NProduccion · Haz clic en cualquier barra para seleccionarla'
+      ? 'Últimos meses con producción registrada · Haz clic en cualquier barra para seleccionarla'
       : `Mostrando cifras de ${HOME_MONTHS_LONG[mes - 1]} ${anio}. Haz clic en otro mes para comparar.`;
   }
 
@@ -5175,7 +5199,7 @@ function renderHomeChart(rows, selectedIdx = -1) {
   const noteEl = document.getElementById('homeChartNote');
   if (noteEl) {
     noteEl.textContent = isLastSelected
-      ? 'Últimos meses con registros en NProduccion · Haz clic en cualquier barra para seleccionarla'
+      ? 'Últimos meses con producción registrada · Haz clic en cualquier barra para seleccionarla'
       : `Mostrando cifras de ${selectedMonthInfo.long}. Haz clic en otro mes para comparar.`;
   }
 
@@ -5251,9 +5275,9 @@ async function abrirVistaProduccion() {
 function initUniversalTableSorting() {
   document.addEventListener('click', (e) => {
     const th = e.target.closest('th');
-    if (!th) return;
+    if (!th || !th.closest('thead')) return;
     const table = th.closest('table');
-    if (!table) return;
+    if (!table || table.classList.contains('rm-table') || table.dataset.noSort === 'true') return;
 
     // Si tiene un handler propio en línea (ej. ordenarTablaProdDiagnosticos) o no es ordenable, no intervenir
     if (th.hasAttribute('onclick') || th.dataset.noSort === 'true' || th.hasAttribute('data-no-sort')) return;

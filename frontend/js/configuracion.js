@@ -99,7 +99,7 @@ function htmlEstadoSistema(e) {
     </div>
     <div class="cfg-tiles">
       ${tile(CFG_ICONOS.bd, 'Base de datos', `<span class="cfg-dot ${latClase}"></span>Conectada`, `${esc(latTexto)} · ${formatNumber(lat)} ms<br>${esc(e.conexion.baseDatos || '')} en ${esc(e.conexion.servidor || '')}`)}
-      ${tile(CFG_ICONOS.calendario, 'Última atención cargada', ultima ? esc(cfgFecha(ultima)) : 'Sin datos', ultima ? `Registrada ${esc(cfgHace(ultima))}` : 'NProduccion no tiene atenciones')}
+      ${tile(CFG_ICONOS.calendario, 'Última atención cargada', ultima ? esc(cfgFecha(ultima)) : 'Sin datos', ultima ? `Registrada ${esc(cfgHace(ultima))}` : 'Sin atenciones registradas')}
       ${tile(CFG_ICONOS.importar, 'Última importación', imp ? esc(cfgFechaHora(imp.fecha)) : 'Sin registro', imp ? `${esc(imp.usuario || '')}${imp.detalle?.length ? ` · ${esc(imp.detalle.join(', '))}` : ''}` : 'Se mostrará después de la próxima importación')}
       ${tile(CFG_ICONOS.usuarios, 'Usuarios', `${formatNumber(e.usuarios.activos)} activos`, `${formatNumber(e.usuarios.total)} en total · ${formatNumber(e.usuarios.conectados)} con sesión abierta`)}
     </div>
@@ -372,9 +372,7 @@ function reiniciarInactividad(forzar = false) {
   INACT.timer = setTimeout(async () => {
     document.getElementById('inactividadAviso')?.remove();
     if (!currentUser) return;
-    await logout();
-    const estado = document.getElementById('loginStatus');
-    if (estado) { estado.textContent = 'Se cerró tu sesión por inactividad. Ingresa nuevamente.'; estado.hidden = false; }
+    await logout('Se cerró tu sesión por inactividad. Ingresa nuevamente.');
   }, total);
 }
 

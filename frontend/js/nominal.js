@@ -45,7 +45,7 @@ const NOM_SUGERIDOS = {
 
 const NOM_ETIQUETAS = {
   disa: 'DISA', red: 'Red', microRed: 'MicroRed', establecimiento: 'Establecimiento', anio: 'Año',
-  paciente: 'Paciente', idPaciente: 'Id_Paciente', cita: 'Id_Cita', historia: 'Historia clínica',
+  paciente: 'Paciente', idPaciente: 'ID de paciente', cita: 'ID de cita', historia: 'Historia clínica',
   personal: 'Personal', profesion: 'Profesión', registrador: 'Registrador', grupo: 'Grupo de riesgo', gestante: 'Condición gestante',
   sistema: 'Sistema', ups: 'Servicio (UPS)', turno: 'Turno', edad: 'Edad', tipoEdad: 'Tipo de edad', codigo: 'CIE / CPMS',
   td: 'Tipo Dx', lab: 'Lab', tipoDoc: 'Tipo de documento', lote: 'Lote', pag: 'N.º página', reg: 'N.º registro',
@@ -827,7 +827,7 @@ exportadores.nominal = async (formato, boton) => {
   if (!datos.filas.length) { toast('No hay registros para exportar con esos filtros.', 'info'); return; }
   const recortado = datos.filas.length >= (datos.limiteExportar || 5000);
   exportarDocumento(formato, {
-    titulo: dePersonal ? 'Atenciones HIS por personal' : deAtenciones ? 'Búsqueda avanzada de atenciones HIS' : 'Búsqueda nominal de atenciones HIS',
+    titulo: dePersonal ? 'Atenciones HIS por personal' : deAtenciones ? 'Búsqueda con filtros de atenciones HIS' : 'Búsqueda nominal de atenciones HIS',
     datos: [...filtros, ['Registros exportados', formatNumber(datos.filas.length) + (total ? ` de ${formatNumber(total)}` : '')]],
     archivo: dePersonal ? 'busqueda-personal-his' : deAtenciones ? 'busqueda-atenciones-his' : 'busqueda-nominal-his',
     orientacion: 'landscape',
